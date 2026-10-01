@@ -7,7 +7,7 @@
   var Domain = global.Domain;
   var Storage = global.Storage;
 
-  var SEED_VERSION = '4';
+  var SEED_VERSION = '6';
 
   /* major: true → 大站；未标记者为小站 */
   var BUILTIN_LINES = [
@@ -83,7 +83,7 @@
         { n: '广州北', e: 'Guangzhoubei' },
         { n: '广州南', e: 'Guangzhounan', major: true },
         { n: '深圳北', e: 'Shenzhenbei', major: true },
-        { n: '福田', e: 'Futian', major: true },
+        { n: '福田', e: 'Futian' },
         { n: '香港西九龙', e: 'Xianggangxijiulong', major: true }
       ]
     },
@@ -125,7 +125,7 @@
       name: '杭深铁路（四纵）',
       stations: [
         { n: '杭州东', e: 'Hangzhoudong', major: true },
-        { n: '杭州南', e: 'Hangzhounan', major: true },
+        { n: '杭州南', e: 'Hangzhounan' },
         { n: '绍兴北', e: 'Shaoxingbei' },
         { n: '绍兴东', e: 'Shaoxingdong' },
         { n: '余姚北', e: 'Yuyaobei' },
@@ -249,8 +249,8 @@
         { n: '上海虹桥', e: 'Shanghaihongqiao', major: true },
         { n: '昆山南', e: 'Kunshannan' },
         { n: '苏州', e: 'Suzhou', major: true },
-        { n: '无锡', e: 'Wuxi', major: true },
-        { n: '常州', e: 'Changzhou', major: true },
+        { n: '无锡', e: 'Wuxi' },
+        { n: '常州', e: 'Changzhou' },
         { n: '丹阳', e: 'Danyang' },
         { n: '镇江', e: 'Zhenjiang' },
         { n: '南京南', e: 'Nanjingnan', major: true },
@@ -291,7 +291,7 @@
         { n: '海宁西', e: 'Hainingxi' },
         { n: '临平南', e: 'Linpingnan' },
         { n: '杭州东', e: 'Hangzhoudong', major: true },
-        { n: '杭州南', e: 'Hangzhounan', major: true },
+        { n: '杭州南', e: 'Hangzhounan' },
         { n: '诸暨', e: 'Zhuji' },
         { n: '义乌', e: 'Yiwu' },
         { n: '金华', e: 'Jinhua' },
@@ -324,7 +324,7 @@
         { n: '三穗', e: 'Sansui' },
         { n: '凯里南', e: 'Kailinan' },
         { n: '贵定北', e: 'Guidingbei' },
-        { n: '贵阳东', e: 'Guiyangdong', major: true },
+        { n: '贵阳东', e: 'Guiyangdong' },
         { n: '贵阳北', e: 'Guiyangbei', major: true },
         { n: '平坝南', e: 'Pingbanan' },
         { n: '安顺西', e: 'Anshunxi' },

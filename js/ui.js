@@ -859,45 +859,28 @@
     });
   }
 
-  /* ================= 定时自动扫描候补 ================= */
+  /* ================= 退票模拟 ================= */
 
-  var AUTO_KEY = 'tts:autoScanInterval';
-  var autoTimer = null;
-  var autoScanning = false;
-
-  function getAutoInterval() {
-    return Number(global.localStorage.getItem(AUTO_KEY) || '5');
-  }
-
-  function startAutoScan() {
-    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-    var sec = getAutoInterval();
-    if (!sec) return;
-    autoTimer = setInterval(function () {
-      if (autoScanning) return;
-      autoScanning = true;
-      try {
-        var fulfilled = global.Ticketing.processAllWaiting();
-        if (fulfilled > 0) {
-          global.Ticketing.Events.push('autoscan', '自动扫描兑现 ' + fulfilled + ' 单候补', '', '');
-          toast('自动扫描：候补兑现 ' + fulfilled + ' 单', 'success');
-          renderAll();
-        }
-      } finally {
-        autoScanning = false;
+  function bindRefundSim() {
+    $('#refund-sim-btn').addEventListener('click', function () {
+      var rate = Number($('#refund-rate').value);
+      if (!isFinite(rate) || rate < 1 || rate > 100) { toast('退票比率需在 1-100 之间', 'error'); return; }
+      var issued = Domain.listOrders().filter(function (o) { return o.status === 'issued'; });
+      if (!issued.length) { toast('当前没有已出票订单', 'info'); return; }
+      var count = Math.max(1, Math.round(issued.length * rate / 100));
+      // 随机抽取不重复的订单逐张退票（refundOrder 内部自动按时间戳补录）
+      for (var i = issued.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = issued[i]; issued[i] = issued[j]; issued[j] = tmp;
       }
-    }, sec * 1000);
-  }
-
-  function bindAutoScan() {
-    var sel = $('#auto-scan-interval');
-    sel.value = String(getAutoInterval());
-    sel.addEventListener('change', function () {
-      global.localStorage.setItem(AUTO_KEY, sel.value);
-      startAutoScan();
-      toast(sel.value === '0' ? '自动扫描已关闭' : '自动扫描间隔：每 ' + sel.value + ' 秒', 'info');
+      var refunded = 0, fulfilled = 0;
+      for (var k = 0; k < count && k < issued.length; k++) {
+        var r = global.Ticketing.refundOrder(issued[k].id);
+        if (r.ok) { refunded++; fulfilled += r.fulfilled || 0; }
+      }
+      toast('退票模拟：退 ' + refunded + ' 张，候补补录 ' + fulfilled + ' 单', 'success');
+      renderAll();
     });
-    startAutoScan();
   }
 
   /* ================= 标签切换 ================= */
@@ -962,7 +945,7 @@
       bindBookingForm();
       bindOrderRefund();
       bindQueryControls();
-      bindAutoScan();
+      bindRefundSim();
       bindSimForm();
     },
     renderAll: renderAll,

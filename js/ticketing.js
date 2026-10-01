@@ -23,8 +23,7 @@
     issued: { label: '出票', cls: 'ev-issued' },
     waitlisted: { label: '候补', cls: 'ev-waitlisted' },
     refund: { label: '退票', cls: 'ev-refund' },
-    fulfilled: { label: '兑现', cls: 'ev-fulfilled' },
-    autoscan: { label: '自动扫描', cls: 'ev-autoscan' }
+    fulfilled: { label: '兑现', cls: 'ev-fulfilled' }
   };
 
   function pushEvent(type, detail, trainCode, orderId) {

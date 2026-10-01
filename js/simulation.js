@@ -55,23 +55,34 @@
     var n = seq.length;
     var stops = [];
     if (type === TYPE_DIRECT) {
-      // 两点直达：仅起终点两站，中间不停靠
-      var i = randInt(rng, 0, n - 2);
-      var j = randInt(rng, i + 1, n - 1);
-      stops = [seq[i], seq[j]];
+      // 两点直达：仅在大站之间开行（两端均为大站），中间不停靠
+      if (majors.length < 2) return null;
+      var mi = randInt(rng, 0, majors.length - 2);
+      var mj = randInt(rng, mi + 1, majors.length - 1);
+      stops = [majors[mi], majors[mj]];
     } else if (type === TYPE_EXPRESS) {
-      // 大站快车：首站 + 末站 + 线路标记的大站；不足 3 个停靠时退化为每第 3 站
-      stops = seq.filter(function (no) { return no === seq[0] || no === seq[n - 1] || majors.indexOf(no) !== -1; });
-      if (stops.length < 3) {
-        stops = seq.filter(function (no, i) { return i % 3 === 0 || i === n - 1; });
-      }
+      // 大站快车：随机取两个大站作为始发/终到（不一定线路首末），只停靠区间内大站
+      if (majors.length < 2) return null;
+      var mi2 = randInt(rng, 0, majors.length - 2);
+      var mj2 = randInt(rng, mi2 + 1, majors.length - 1);
+      stops = majors.slice(mi2, mj2 + 1);
     } else if (type === TYPE_SKIP) {
-      // 隔站停车（泛指）：相邻两个停靠站之间随机隔 1~3 站，末站必停
-      var i = 0;
-      stops.push(seq[0]);
-      while (i < n - 1) {
-        i = Math.min(n - 1, i + 1 + randInt(rng, 1, 3));
-        stops.push(seq[i]);
+      // 隔站停车：随机起终点（不限线路首末），以隔 1~3 站推进，
+      // 途经大站必停（大站优先于随机间隔），终点必停
+      var start = randInt(rng, 0, n - 2);
+      var end = randInt(rng, start + 1, n - 1);
+      var cur = start;
+      stops.push(seq[cur]);
+      while (cur < end) {
+        var gapNext = cur + 1 + randInt(rng, 1, 3);
+        var nextMajor = -1;
+        for (var m = cur + 1; m < end; m++) {
+          if (majors.indexOf(seq[m]) !== -1) { nextMajor = m; break; }
+        }
+        var next = Math.min(gapNext, end);
+        if (nextMajor !== -1 && nextMajor < next) next = nextMajor;
+        stops.push(seq[next]);
+        cur = next;
       }
     }
     return stops;

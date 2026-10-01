@@ -28,10 +28,11 @@
   function saveSeq() { global.Storage.write(K.seq, seq); }
 
   /** 随机取一个未被占用且不在排除集合中的元素；用尽返回 null。
-      takenSet 以字符串存储（站号为 pad3 字符串），查询时统一转字符串，避免数字/字符串类型不匹配 */
+      takenSet 以 pad3 字符串存储（'000'-'999'），查询时必须同格式转换——
+      注意 String(i)='5' ≠ '005'，必须用 pad3 */
   function randomPick(total, takenSet) {
     var pool = [];
-    for (var i = 0; i < total; i++) if (!takenSet.has(String(i))) pool.push(i);
+    for (var i = 0; i < total; i++) if (!takenSet.has(pad3(i))) pool.push(i);
     if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)];
   }

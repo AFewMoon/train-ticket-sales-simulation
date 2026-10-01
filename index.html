@@ -21,13 +21,13 @@
         <h1 class="brand-title">火车票销售模拟</h1>
       </div>
       <nav class="tabs" role="tablist" aria-label="功能模块">
+        <button class="tab-btn" data-tab="sim" role="tab" aria-selected="false">自动仿真</button>
         <button class="tab-btn is-active" data-tab="stations" role="tab" aria-selected="true">车站</button>
         <button class="tab-btn" data-tab="lines" role="tab" aria-selected="false">线路</button>
         <button class="tab-btn" data-tab="passengers" role="tab" aria-selected="false">乘车人</button>
         <button class="tab-btn" data-tab="trains" role="tab" aria-selected="false">车次</button>
         <button class="tab-btn" data-tab="booking" role="tab" aria-selected="false">购票</button>
         <button class="tab-btn" data-tab="orders" role="tab" aria-selected="false">订单与座位</button>
-        <button class="tab-btn" data-tab="sim" role="tab" aria-selected="false">自动仿真</button>
       </nav>
     </div>
   </header>
@@ -182,53 +182,54 @@
     <!-- 购票面板 -->
     <section class="panel" id="panel-booking" role="tabpanel" hidden>
       <div class="panel-grid">
-        <div class="card form-card">
-          <h2 class="card-title">购票下单</h2>
-          <form id="booking-form" autocomplete="off">
-            <div class="field">
-              <label for="booking-passenger">乘车人 <span class="req">*</span></label>
-              <select id="booking-passenger" required></select>
-            </div>
-            <div class="field">
-              <label for="booking-train">车次 <span class="req">*</span></label>
-              <select id="booking-train" required></select>
-              <p class="hint" id="booking-capacity">请选择车次</p>
-            </div>
-            <div class="field two-col">
-              <div>
-                <label for="booking-from">起点站 <span class="req">*</span></label>
-                <select id="booking-from" required></select>
+        <div class="col-stack">
+          <div class="card form-card">
+            <h2 class="card-title">购票下单</h2>
+            <form id="booking-form" autocomplete="off">
+              <div class="field">
+                <label for="booking-passenger">乘车人 <span class="req">*</span></label>
+                <select id="booking-passenger" required></select>
               </div>
-              <div>
-                <label for="booking-to">终点站 <span class="req">*</span></label>
-                <select id="booking-to" required></select>
+              <div class="field">
+                <label for="booking-train">车次 <span class="req">*</span></label>
+                <select id="booking-train" required></select>
+                <p class="hint" id="booking-capacity">请选择车次</p>
+              </div>
+              <div class="field two-col">
+                <div>
+                  <label for="booking-from">起点站 <span class="req">*</span></label>
+                  <select id="booking-from" required></select>
+                </div>
+                <div>
+                  <label for="booking-to">终点站 <span class="req">*</span></label>
+                  <select id="booking-to" required></select>
+                </div>
+              </div>
+              <p class="hint">仅可选择该车次站序中起点在终点之前的合法区间</p>
+              <button type="submit" class="btn btn-primary btn-block">提交购票请求</button>
+            </form>
+          </div>
+          <div class="card">
+            <div class="list-head">
+              <h2 class="card-title">事件时间线</h2>
+              <span class="hint" style="margin: 0;">订单落实情况</span>
+            </div>
+            <div id="event-timeline" class="event-timeline"></div>
+          </div>
+        </div>
+        <div class="col-stack">
+          <div class="card list-card">
+            <div class="list-head">
+              <h2 class="card-title">候补队列</h2>
+              <div class="refund-sim-ctl">
+                <label for="refund-rate">退票比率</label>
+                <input type="number" id="refund-rate" min="1" max="100" value="5" />%
               </div>
             </div>
-            <p class="hint">仅可选择该车次站序中起点在终点之前的合法区间</p>
-            <button type="submit" class="btn btn-primary btn-block">提交购票请求</button>
-          </form>
-        </div>
-        <div class="card list-card">
-          <div class="list-head">
-            <h2 class="card-title">候补队列</h2>
-            <div class="auto-scan-ctl">
-              <label for="auto-scan-interval">自动扫描</label>
-              <select id="auto-scan-interval">
-                <option value="0">关闭</option>
-                <option value="2">每 2 秒</option>
-                <option value="5" selected>每 5 秒</option>
-                <option value="10">每 10 秒</option>
-              </select>
-            </div>
+            <div id="waiting-list" class="waiting-list"></div>
+            <button type="button" class="btn btn-danger-outline btn-block" id="refund-sim-btn" style="margin-top: 14px;">退票模拟</button>
+            <p class="hint" style="margin-top: 8px;">按比率随机退票，释放区间后自动按时间戳补录候补</p>
           </div>
-          <div id="waiting-list" class="waiting-list"></div>
-        </div>
-        <div class="card" style="margin-top: 20px;">
-          <div class="list-head">
-            <h2 class="card-title">事件时间线</h2>
-            <span class="hint" style="margin: 0;">购票 / 出票 / 候补 / 退票 / 兑现 实时记录</span>
-          </div>
-          <div id="event-timeline" class="event-timeline"></div>
         </div>
       </div>
     </section>
