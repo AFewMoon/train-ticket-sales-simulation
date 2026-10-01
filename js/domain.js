@@ -19,6 +19,7 @@
   function listPassengers() { return global.Storage.read(K.passengers, []); }
   function listTrains() { return global.Storage.read(K.trains, []); }
   function listOrders() { return global.Storage.read(K.orders, []); }
+  function listLines() { return global.Storage.read(K.lines, []); }
 
   /* ---------- 唯一号码池 ---------- */
 
@@ -94,6 +95,15 @@
     return id.slice(0, 4) + '***********' + id.slice(-4);
   }
 
+  /** 按 17 位数字计算校验位，返回完整 18 位身份证号（供仿真批量构造合法证件） */
+  function makeValidIdCard(digits17) {
+    var d = String(digits17);
+    if (!/^\d{17}$/.test(d)) return null;
+    var sum = 0;
+    for (var i = 0; i < 17; i++) sum += Number(d[i]) * ID_WEIGHTS[i];
+    return d + ID_CHECK_CODES[sum % 11];
+  }
+
   /* ---------- 车站 ---------- */
 
   function addStation(nameZh, nameEn) {
@@ -162,9 +172,76 @@
     return listPassengers().find(function (p) { return p.id === id; }) || null;
   }
 
+  /* ---------- 线路 ---------- */
+
+  /** sub 是否为 full 的子序列（保持相对顺序，可跳过元素） */
+  function isSubsequence(sub, full) {
+    if (!Array.isArray(sub) || !Array.isArray(full)) return false;
+    var j = 0;
+    for (var i = 0; i < full.length && j < sub.length; i++) {
+      if (full[i] === sub[j]) j++;
+    }
+    return j === sub.length;
+  }
+
+  /**
+   * 新增线路：name + 有序站序 + 大站集合 majorNos（⊆ stationSeq）。
+   * Line { id, name, stationSeq, majorNos, builtin?, sim? }
+   */
+  function addLine(name, stationSeq, majorNos, flags) {
+    name = String(name || '').trim();
+    if (!name) return { ok: false, msg: '线路名称不能为空' };
+    if (!Array.isArray(stationSeq) || stationSeq.length < 2) {
+      return { ok: false, msg: '线路至少需要 2 个途经车站' };
+    }
+    var seen = {};
+    for (var i = 0; i < stationSeq.length; i++) {
+      if (seen[stationSeq[i]]) return { ok: false, msg: '线路站序中存在重复车站' };
+      seen[stationSeq[i]] = true;
+      if (!getStation(stationSeq[i])) return { ok: false, msg: '站序中包含未登记的车站' };
+    }
+    var majors = (Array.isArray(majorNos) ? majorNos : []).filter(function (no) {
+      return seen[no];
+    });
+    if (!majors.length) {
+      // 未指定大站时默认首末站为大站
+      majors = [stationSeq[0], stationSeq[stationSeq.length - 1]];
+    }
+    var lines = listLines();
+    if (lines.some(function (l) { return l.name === name; })) {
+      return { ok: false, msg: '线路名称已存在：' + name };
+    }
+    var line = Object.assign(
+      { id: uid('l'), name: name, stationSeq: stationSeq.slice(), majorNos: majors },
+      flags || {}
+    );
+    lines.push(line);
+    if (!global.Storage.write(K.lines, lines)) return { ok: false, msg: '保存失败' };
+    return { ok: true, line: line };
+  }
+
+  /** 线路是否被车次挂接引用 */
+  function lineUsedByTrain(lineId) {
+    return listTrains().some(function (t) { return t.lineId === lineId; });
+  }
+
+  function removeLine(id) {
+    var lines = listLines();
+    var idx = lines.findIndex(function (l) { return l.id === id; });
+    if (idx === -1) return { ok: false, msg: '线路不存在' };
+    if (lineUsedByTrain(id)) return { ok: false, msg: '该线路已被车次挂接，禁止删除' };
+    lines.splice(idx, 1);
+    if (!global.Storage.write(K.lines, lines)) return { ok: false, msg: '保存失败' };
+    return { ok: true };
+  }
+
+  function getLine(id) {
+    return listLines().find(function (l) { return l.id === id; }) || null;
+  }
+
   /* ---------- 车次 ---------- */
 
-  function addTrain(stationSeq, seatCount) {
+  function addTrain(stationSeq, seatCount, lineId) {
     if (!Array.isArray(stationSeq) || stationSeq.length < 2) {
       return { ok: false, msg: '车次至少需要 2 个途经车站' };
     }
@@ -177,9 +254,18 @@
     if (!isFinite(seatCount) || seatCount < 1 || seatCount > 50) {
       return { ok: false, msg: '座位数需在 1-50 之间' };
     }
+    var train = { code: null, stationSeq: stationSeq.slice(), seatCount: seatCount };
+    if (lineId) {
+      var line = getLine(lineId);
+      if (!line) return { ok: false, msg: '所挂接的线路不存在' };
+      if (!isSubsequence(train.stationSeq, line.stationSeq)) {
+        return { ok: false, msg: '车次站序必须是线路「' + line.name + '」站序的子序列（保持相对顺序）' };
+      }
+      train.lineId = lineId;
+    }
     var code = allocateTrainCode();
     if (code === null) return { ok: false, msg: '车次号生成失败' };
-    var train = { code: code, stationSeq: stationSeq.slice(), seatCount: seatCount };
+    train.code = code;
     var trains = listTrains();
     trains.push(train);
     if (!global.Storage.write(K.trains, trains)) return { ok: false, msg: '保存失败' };
@@ -211,6 +297,7 @@
   global.Domain = {
     uid: uid,
     listStations: listStations,
+    listLines: listLines,
     listPassengers: listPassengers,
     listTrains: listTrains,
     listOrders: listOrders,
@@ -218,6 +305,11 @@
     removeStation: removeStation,
     getStation: getStation,
     stationUsedByTrain: stationUsedByTrain,
+    addLine: addLine,
+    removeLine: removeLine,
+    getLine: getLine,
+    lineUsedByTrain: lineUsedByTrain,
+    isSubsequence: isSubsequence,
     addPassenger: addPassenger,
     removePassenger: removePassenger,
     getPassenger: getPassenger,
@@ -225,6 +317,7 @@
     removeTrain: removeTrain,
     getTrain: getTrain,
     isValidIdCard: isValidIdCard,
+    makeValidIdCard: makeValidIdCard,
     maskIdCard: maskIdCard,
     isValidRange: isValidRange,
     rebuildSeqPools: rebuildSeqPools

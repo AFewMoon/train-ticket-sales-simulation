@@ -22,10 +22,12 @@
       </div>
       <nav class="tabs" role="tablist" aria-label="功能模块">
         <button class="tab-btn is-active" data-tab="stations" role="tab" aria-selected="true">车站</button>
+        <button class="tab-btn" data-tab="lines" role="tab" aria-selected="false">线路</button>
         <button class="tab-btn" data-tab="passengers" role="tab" aria-selected="false">乘车人</button>
         <button class="tab-btn" data-tab="trains" role="tab" aria-selected="false">车次</button>
         <button class="tab-btn" data-tab="booking" role="tab" aria-selected="false">购票</button>
         <button class="tab-btn" data-tab="orders" role="tab" aria-selected="false">订单与座位</button>
+        <button class="tab-btn" data-tab="sim" role="tab" aria-selected="false">自动仿真</button>
       </nav>
     </div>
   </header>
@@ -59,6 +61,42 @@
             <span class="badge badge-count" id="station-count">0 座</span>
           </div>
           <div class="table-wrap" id="station-table-wrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 线路面板 -->
+    <section class="panel" id="panel-lines" role="tabpanel" hidden>
+      <div class="panel-grid">
+        <div class="card form-card">
+          <h2 class="card-title">登记线路</h2>
+          <form id="line-form" autocomplete="off">
+            <div class="field">
+              <label for="line-name">线路名称 <span class="req">*</span></label>
+              <input type="text" id="line-name" placeholder="如：京沪高铁" maxlength="30" required />
+            </div>
+            <div class="field">
+              <label for="line-station-select">选择途经车站 <span class="req">*</span></label>
+              <div class="row-gap">
+                <select id="line-station-select"></select>
+                <button type="button" class="btn btn-ghost" id="add-line-station">加入站序</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>已选站序（起点 → 终点，点 ★ 标记大站）</label>
+              <div class="station-chain" id="line-station-chain">
+                <span class="hint">尚未选择车站，请先在「车站」页登记</span>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">登记线路</button>
+          </form>
+        </div>
+        <div class="card list-card">
+          <div class="list-head">
+            <h2 class="card-title">线路列表</h2>
+            <span class="badge badge-count" id="line-count">0 条</span>
+          </div>
+          <div class="table-wrap" id="line-table-wrap"></div>
         </div>
       </div>
     </section>
@@ -101,6 +139,11 @@
               <label for="train-code">车次号</label>
               <input type="text" id="train-code" readonly />
               <p class="hint">系统随机生成唯一车次号</p>
+            </div>
+            <div class="field">
+              <label for="train-line">所属线路（可选）</label>
+              <select id="train-line"></select>
+              <p class="hint">挂接线路后，车次站序必须为该线路站序的子序列</p>
             </div>
             <div class="field">
               <label for="train-station-select">选择途经车站 <span class="req">*</span></label>
@@ -191,13 +234,97 @@
         <div id="seat-map" class="seat-map"></div>
       </div>
     </section>
+
+    <!-- 自动仿真面板 -->
+    <section class="panel" id="panel-sim" role="tabpanel" hidden>
+      <div class="sim-grid">
+        <div class="card form-card">
+          <h2 class="card-title">仿真参数</h2>
+          <form id="sim-form" autocomplete="off">
+            <div class="field">
+              <label for="sim-line">仿真线路</label>
+              <select id="sim-line"></select>
+              <p class="hint" id="sim-line-hint">内置「四纵四横」线路已按大/小站标记</p>
+            </div>
+            <div class="field" id="sim-auto-field" hidden>
+              <label for="sim-auto-stations">自动生成线路的站点数</label>
+              <input type="number" id="sim-auto-stations" min="4" max="30" value="10" />
+            </div>
+            <div class="field">
+              <label>车次数量（按类型）</label>
+              <div class="sim-type-grid">
+                <div class="sim-type-item">
+                  <span class="badge badge-type-full">全程车</span>
+                  <input type="number" id="sim-count-full" min="0" max="10" value="2" />
+                </div>
+                <div class="sim-type-item">
+                  <span class="badge badge-type-section">区间直达</span>
+                  <input type="number" id="sim-count-section" min="0" max="10" value="2" />
+                </div>
+                <div class="sim-type-item">
+                  <span class="badge badge-type-express">大站快车</span>
+                  <input type="number" id="sim-count-express" min="0" max="10" value="2" />
+                </div>
+                <div class="sim-type-item">
+                  <span class="badge badge-type-skip">隔站停车</span>
+                  <input type="number" id="sim-count-skip" min="0" max="10" value="2" />
+                </div>
+              </div>
+            </div>
+            <div class="field two-col">
+              <div>
+                <label for="sim-seats">每车座位数</label>
+                <input type="number" id="sim-seats" min="1" max="20" value="4" />
+              </div>
+              <div>
+                <label for="sim-passengers">乘车人数</label>
+                <input type="number" id="sim-passengers" min="1" max="100" value="12" />
+              </div>
+            </div>
+            <div class="field two-col">
+              <div>
+                <label for="sim-requests">每车购票请求数</label>
+                <input type="number" id="sim-requests" min="1" max="50" value="10" />
+              </div>
+              <div>
+                <label for="sim-seed">随机种子</label>
+                <input type="number" id="sim-seed" min="0" max="999999" value="42" />
+                <p class="hint">同一种子结果可复现</p>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block" id="sim-run">运行仿真</button>
+            <button type="button" class="btn btn-danger-outline btn-block" id="sim-cleanup" style="margin-top: 10px;">清理仿真数据</button>
+          </form>
+        </div>
+        <div class="sim-results">
+          <div class="stat-cards" id="sim-stats">
+            <div class="empty-state">配置参数后点击「运行仿真」，将基于所选线路自动生成四类车次并批量购票</div>
+          </div>
+          <div class="card" id="sim-summary-card" hidden>
+            <div class="list-head">
+              <h2 class="card-title">车次摘要</h2>
+            </div>
+            <div class="table-wrap" id="sim-summary"></div>
+          </div>
+          <div class="card" id="sim-seatmap-card" hidden style="margin-top: 20px;">
+            <div class="list-head">
+              <h2 class="card-title">各车次座位区间图</h2>
+              <p class="hint" style="margin: 0;">★ 大站 · 观察快车稀疏停靠与全程车密集拼接的对比</p>
+            </div>
+            <div id="sim-seatmap" class="seat-map"></div>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <div id="toast-box" class="toast-box" aria-live="polite"></div>
 
   <script src="js/storage.js"></script>
   <script src="js/domain.js"></script>
+  <script src="js/builtin.js"></script>
   <script src="js/ticketing.js"></script>
+  <script src="js/simulation.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/app.js"></script>
 </body>

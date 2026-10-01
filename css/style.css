@@ -198,6 +198,30 @@ input.is-invalid { border-color: var(--red); }
 .badge-code-d { background: var(--primary-100); color: var(--primary-700); }
 .badge-code-k { background: var(--green-bg); color: var(--green); }
 
+/* 车次类型徽章（仿真） */
+.badge-type-full { background: var(--primary-100); color: var(--primary-700); }
+.badge-type-section { background: var(--green-bg); color: var(--green); }
+.badge-type-express { background: var(--amber-bg); color: #B45309; }
+.badge-type-skip { background: #EDE9FE; color: #6D28D9; }
+.badge-major { background: var(--amber-bg); color: #B45309; }
+
+/* 站序链大站星标 */
+.chain-star {
+  border: 0;
+  background: rgba(255,255,255,.35);
+  color: inherit;
+  width: 16px; height: 16px;
+  line-height: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.chain-node.is-major { box-shadow: 0 0 0 2px rgba(245, 158, 11, .85); }
+.chain-star.is-on { background: rgba(245,158,11,.95); color: #fff; }
+
 /* ============ 表格 ============ */
 .table-wrap { overflow-x: auto; }
 
@@ -366,6 +390,58 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 }
 .seat-axis .axis-spacer { }
 
+/* ============ 自动仿真 ============ */
+.sim-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.sim-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sim-type-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #F8FAFC;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.sim-type-item input { width: 72px; text-align: center; padding: 6px 8px; }
+
+.btn-danger-outline {
+  background: transparent;
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+.btn-danger-outline:hover { background: var(--red-bg); }
+
+.stat-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px 18px;
+  transition: transform .15s, box-shadow .15s;
+  animation: fadeIn .3s ease;
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -12px rgba(15, 23, 42, .2); }
+.stat-card .stat-label { font-size: 12px; font-weight: 700; color: var(--text-3); letter-spacing: .5px; }
+.stat-card .stat-value { font-size: 26px; font-weight: 700; margin-top: 2px; }
+.stat-card.is-green .stat-value { color: var(--green); }
+.stat-card.is-amber .stat-value { color: var(--amber); }
+.stat-card.is-blue .stat-value { color: var(--primary-600); }
+
+.sim-results { animation: fadeIn .3s ease; }
+
 /* ============ Toast ============ */
 .toast-box {
   position: fixed;
@@ -396,9 +472,10 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 
 /* ============ 响应式 ============ */
 @media (max-width: 960px) {
-  .panel-grid { grid-template-columns: 1fr; }
+  .panel-grid, .sim-grid { grid-template-columns: 1fr; }
   .topbar-inner { justify-content: center; }
   .tabs { flex-wrap: wrap; justify-content: center; }
   .seat-row { grid-template-columns: 72px 1fr; }
   .seat-axis { grid-template-columns: 72px 1fr; }
+  .stat-cards { grid-template-columns: repeat(2, 1fr); }
 }

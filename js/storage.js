@@ -7,10 +7,12 @@
   var storage = {
     KEYS: {
       stations: PREFIX + 'stations',
+      lines: PREFIX + 'lines',
       passengers: PREFIX + 'passengers',
       trains: PREFIX + 'trains',
       orders: PREFIX + 'orders',
-      seq: PREFIX + 'seq'
+      seq: PREFIX + 'seq',
+      seeded: PREFIX + 'seeded'
     },
 
     /** 读取并解析 JSON；解析失败或结构不符时回退为 fallback */

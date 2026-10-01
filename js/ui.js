@@ -86,6 +86,127 @@
     });
   }
 
+  /* ================= 线路面板 ================= */
+
+  var lineDraft = { stationSeq: [], majorNos: [] }; // 线路表单草稿（含大站标记）
+
+  function stationName(no) {
+    var s = Domain.getStation(no);
+    return s ? s.nameZh : no;
+  }
+
+  function isMajorInDraft(no) {
+    return lineDraft.majorNos.indexOf(no) !== -1;
+  }
+
+  function renderLines() {
+    var lines = Domain.listLines();
+    $('#line-count').textContent = lines.length + ' 条';
+    var wrap = $('#line-table-wrap');
+    if (!lines.length) {
+      wrap.innerHTML = emptyState('暂无线路，可在左侧登记');
+      return;
+    }
+    var rows = lines.map(function (l) {
+      var refCount = Domain.listTrains().filter(function (t) { return t.lineId === l.id; }).length;
+      var seqHtml = l.stationSeq.map(function (no, i) {
+        var major = (l.majorNos || []).indexOf(no) !== -1;
+        return (i > 0 ? '<span class="chain-arrow">→</span>' : '') +
+          '<span class="chain-node' + (major ? ' is-major' : '') + '">' + escapeHtml(stationName(no)) + (major ? ' ★' : '') + '</span>';
+      }).join('');
+      return '<tr><td>' + escapeHtml(l.name) + (l.builtin ? ' <span class="badge badge-major">内置</span>' : '') +
+        '</td><td>' + seqHtml + '</td><td>' + refCount + ' 列' +
+        '</td><td><button class="btn btn-danger" data-del-line="' + escapeHtml(l.id) + '">删除</button></td></tr>';
+    }).join('');
+    wrap.innerHTML = '<table><thead><tr><th>线路</th><th>站序（★ 大站）</th><th>挂接车次</th><th>操作</th></tr></thead><tbody>' +
+      rows + '</tbody></table>';
+  }
+
+  function refreshLineStationSelect() {
+    var sel = $('#line-station-select');
+    var stations = Domain.listStations();
+    var inDraft = {};
+    lineDraft.stationSeq.forEach(function (no) { inDraft[no] = true; });
+    var options = stations.filter(function (s) { return !inDraft[s.no]; })
+      .map(function (s) { return '<option value="' + escapeHtml(s.no) + '">' + escapeHtml(s.nameZh) + '（' + escapeHtml(s.no) + '）</option>'; })
+      .join('');
+    sel.innerHTML = options || '<option value="">无可用车站</option>';
+  }
+
+  function renderLineDraft() {
+    var chain = $('#line-station-chain');
+    if (!lineDraft.stationSeq.length) {
+      chain.innerHTML = '<span class="hint">尚未选择车站，请先在「车站」页登记</span>';
+      return;
+    }
+    var html = lineDraft.stationSeq.map(function (no, i) {
+      var major = isMajorInDraft(no);
+      var node = '<span class="chain-node' + (major ? ' is-major' : '') + '"><span class="idx">' + (i + 1) + '</span>' +
+        escapeHtml(stationName(no)) +
+        '<button type="button" class="chain-star' + (major ? ' is-on' : '') + '" data-toggle-major="' + i + '" title="标记/取消大站">' + (major ? '★' : '☆') + '</button>' +
+        '<button type="button" class="chain-remove" data-remove-line-draft="' + i + '" title="移除">✕</button></span>';
+      return (i > 0 ? '<span class="chain-arrow">→</span>' : '') + node;
+    }).join('');
+    chain.innerHTML = html;
+  }
+
+  function bindLineForm() {
+    $('#add-line-station').addEventListener('click', function () {
+      var no = $('#line-station-select').value;
+      if (!no) { toast('无可用车站可选', 'error'); return; }
+      lineDraft.stationSeq.push(no);
+      renderLineDraft();
+      refreshLineStationSelect();
+    });
+
+    $('#line-station-chain').addEventListener('click', function (e) {
+      var rm = e.target.closest('[data-remove-line-draft]');
+      if (rm) {
+        var idx = Number(rm.getAttribute('data-remove-line-draft'));
+        var removed = lineDraft.stationSeq.splice(idx, 1)[0];
+        lineDraft.majorNos = lineDraft.majorNos.filter(function (no) { return no !== removed; });
+        renderLineDraft();
+        refreshLineStationSelect();
+        return;
+      }
+      var star = e.target.closest('[data-toggle-major]');
+      if (star) {
+        var i = Number(star.getAttribute('data-toggle-major'));
+        var no = lineDraft.stationSeq[i];
+        var pos = lineDraft.majorNos.indexOf(no);
+        if (pos === -1) lineDraft.majorNos.push(no);
+        else lineDraft.majorNos.splice(pos, 1);
+        renderLineDraft();
+      }
+    });
+
+    $('#line-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var res = Domain.addLine($('#line-name').value, lineDraft.stationSeq, lineDraft.majorNos.slice());
+      if (!res.ok) { toast(res.msg, 'error'); return; }
+      toast('线路登记成功：' + res.line.name + '（' + res.line.stationSeq.length + ' 站，大站 ' + res.line.majorNos.length + ' 个）', 'success');
+      $('#line-name').value = '';
+      lineDraft.stationSeq = [];
+      lineDraft.majorNos = [];
+      renderLineDraft();
+      refreshLineStationSelect();
+      renderAll();
+    });
+  }
+
+  function bindLineDelete() {
+    $('#line-table-wrap').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-del-line]');
+      if (!btn) return;
+      var id = btn.getAttribute('data-del-line');
+      var l = Domain.getLine(id);
+      if (!confirmAction('确认删除线路「' + (l ? l.name : id) + '」？')) return;
+      var res = Domain.removeLine(id);
+      toast(res.ok ? '线路已删除' : res.msg, res.ok ? 'success' : 'error');
+      renderAll();
+    });
+  }
+
   /* ================= 乘车人面板 ================= */
 
   function renderPassengers() {
@@ -168,16 +289,30 @@
       return '<span class="badge ' + cls + '">' + escapeHtml(code) + '</span>';
     };
     var rows = trains.map(function (t) {
+      var line = t.lineId ? Domain.getLine(t.lineId) : null;
+      var lineBadge = line ? ' <span class="badge badge-count">' + escapeHtml(line.name) + '</span>' : '';
+      var simBadge = t.sim ? ' <span class="badge badge-type-skip">仿真</span>' : '';
       var seqHtml = t.stationSeq.map(function (no, i) {
         var s = Domain.getStation(no);
         var name = s ? s.nameZh : no;
         return (i > 0 ? '<span class="chain-arrow">→</span>' : '') + '<span class="chain-node">' + escapeHtml(name) + '</span>';
       }).join('');
-      return '<tr><td>' + codeBadge(t.code) + '</td><td>' + seqHtml + '</td><td>' + t.seatCount +
+      return '<tr><td>' + codeBadge(t.code) + lineBadge + simBadge + '</td><td>' + seqHtml + '</td><td>' + t.seatCount +
         ' 座</td><td><button class="btn btn-danger" data-del-train="' + escapeHtml(t.code) + '">删除</button></td></tr>';
     }).join('');
     wrap.innerHTML = '<table><thead><tr><th>车次</th><th>站序</th><th>座位数</th><th>操作</th></tr></thead><tbody>' +
       rows + '</tbody></table>';
+  }
+
+  function refreshTrainLineSelect() {
+    var sel = $('#train-line');
+    var lines = Domain.listLines();
+    var prev = sel.value;
+    sel.innerHTML = '<option value="">不挂接线路</option>' +
+      lines.map(function (l) {
+        return '<option value="' + escapeHtml(l.id) + '">' + escapeHtml(l.name) + '（' + l.stationSeq.length + ' 站）</option>';
+      }).join('');
+    if (prev && lines.some(function (l) { return l.id === prev; })) sel.value = prev;
   }
 
   function refreshTrainStationSelect() {
@@ -219,7 +354,8 @@
 
     $('#train-form').addEventListener('submit', function (e) {
       e.preventDefault();
-      var res = Domain.addTrain(trainDraft.stationSeq, $('#train-seat-count').value);
+      var lineId = $('#train-line').value || null;
+      var res = Domain.addTrain(trainDraft.stationSeq, $('#train-seat-count').value, lineId);
       if (!res.ok) { toast(res.msg, 'error'); return; }
       toast('车次登记成功：' + res.train.code, 'success');
       trainDraft.stationSeq = [];
@@ -402,6 +538,53 @@
   }
 
   /** 座位区间图：每行一个座位，彩色区间块按站点轴定位 */
+  var SEG_COLORS = ['#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#7C3AED', '#0891B2', '#DB2777', '#65A30D'];
+
+  /** 生成单趟车次的座位图 HTML（订单与座位页与仿真结果页共用） */
+  function renderTrainSeatMapHtml(train, issued) {
+    var html = '';
+    var S = train.stationSeq.length;
+    var line = train.lineId ? Domain.getLine(train.lineId) : null;
+    var typeMeta = global.Simulation.TYPE_META[global.Simulation.typeOfTrain(train)];
+
+    // 站名轴（大站加 ★）
+    html += '<div class="seat-axis"><div class="axis-spacer"></div><div class="axis-track">';
+    for (var i = 0; i < S; i++) {
+      var s = Domain.getStation(train.stationSeq[i]);
+      var pos = (i / (S - 1)) * 100;
+      var name = (s ? s.nameZh : train.stationSeq[i]) + (line && (line.majorNos || []).indexOf(train.stationSeq[i]) !== -1 ? '★' : '');
+      var align = i === 0 ? '0' : (i === S - 1 ? '100%' : pos + '%');
+      var transform = i === 0 ? 'translateX(0)' : (i === S - 1 ? 'translateX(-100%)' : 'translateX(-50%)');
+      html += '<span class="axis-tick" style="left:' + align + ';transform:' + transform + ';">' + escapeHtml(name) + '</span>';
+    }
+    html += '</div></div>';
+
+    html += '<div style="font-weight:700;color:var(--text-2);font-size:13px;margin-top:6px;">' +
+      '<span class="badge badge-code-' + train.code[0].toLowerCase() + '">' + escapeHtml(train.code) + '</span>' +
+      (typeMeta ? ' <span class="badge ' + typeMeta.badge + '">' + typeMeta.label + '</span>' : '') +
+      (line ? ' <span class="badge badge-count">' + escapeHtml(line.name) + '</span>' : '') +
+      '</div>';
+
+    for (var seat = 1; seat <= train.seatCount; seat++) {
+      var segs = issued.filter(function (o) { return o.seatNo === seat; })
+        .sort(function (a, b) { return a.fromIdx - b.fromIdx; });
+      html += '<div class="seat-row"><div class="seat-label">座位 ' + seat + '</div><div class="seat-track">';
+      segs.forEach(function (o, idx) {
+        var left = (o.fromIdx / (S - 1)) * 100;
+        var width = ((o.toIdx - o.fromIdx) / (S - 1)) * 100;
+        var p = Domain.getPassenger(o.passengerId);
+        var f = Domain.getStation(train.stationSeq[o.fromIdx]);
+        var t = Domain.getStation(train.stationSeq[o.toIdx]);
+        var color = SEG_COLORS[(o.id.charCodeAt(o.id.length - 1) + idx) % SEG_COLORS.length];
+        html += '<div class="seat-seg" style="left:' + left + '%;width:' + width + '%;background:' + color + ';"' +
+          ' data-tip="' + escapeHtml(p ? p.name : '未知') + '：' + escapeHtml(f ? f.nameZh : '') + ' → ' + escapeHtml(t ? t.nameZh : '') + '">' +
+          escapeHtml(f ? f.nameZh : '') + '→' + escapeHtml(t ? t.nameZh : '') + '</div>';
+      });
+      html += '</div></div>';
+    }
+    return html;
+  }
+
   function renderSeatMap() {
     var box = $('#seat-map');
     var trains = Domain.listTrains();
@@ -411,49 +594,119 @@
       return;
     }
 
-    var colors = ['#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#7C3AED', '#0891B2', '#DB2777', '#65A30D'];
     var html = '';
-
     trains.forEach(function (train) {
       var issued = Ticketing.ordersOfTrain(train.code).filter(function (o) { return o.status === 'issued'; });
       if (!issued.length) return;
-      var S = train.stationSeq.length;
-
-      // 站名轴
-      html += '<div class="seat-axis"><div class="axis-spacer"></div><div class="axis-track">';
-      for (var i = 0; i < S; i++) {
-        var s = Domain.getStation(train.stationSeq[i]);
-        var pos = (i / (S - 1)) * 100;
-        var name = s ? s.nameZh : train.stationSeq[i];
-        var align = i === 0 ? '0' : (i === S - 1 ? '100%' : pos + '%');
-        var transform = i === 0 ? 'translateX(0)' : (i === S - 1 ? 'translateX(-100%)' : 'translateX(-50%)');
-        html += '<span class="axis-tick" style="left:' + align + ';transform:' + transform + ';">' + escapeHtml(name) + '</span>';
-      }
-      html += '</div></div>';
-
-      html += '<div style="font-weight:700;color:var(--text-2);font-size:13px;margin-top:6px;">' +
-        '<span class="badge badge-code-' + train.code[0].toLowerCase() + '">' + escapeHtml(train.code) + '</span></div>';
-
-      for (var seat = 1; seat <= train.seatCount; seat++) {
-        var segs = issued.filter(function (o) { return o.seatNo === seat; })
-          .sort(function (a, b) { return a.fromIdx - b.fromIdx; });
-        html += '<div class="seat-row"><div class="seat-label">座位 ' + seat + '</div><div class="seat-track">';
-        segs.forEach(function (o, idx) {
-          var left = (o.fromIdx / (S - 1)) * 100;
-          var width = ((o.toIdx - o.fromIdx) / (S - 1)) * 100;
-          var p = Domain.getPassenger(o.passengerId);
-          var f = Domain.getStation(train.stationSeq[o.fromIdx]);
-          var t = Domain.getStation(train.stationSeq[o.toIdx]);
-          var color = colors[(o.id.charCodeAt(o.id.length - 1) + idx) % colors.length];
-          html += '<div class="seat-seg" style="left:' + left + '%;width:' + width + '%;background:' + color + ';"' +
-            ' data-tip="' + escapeHtml(p ? p.name : '未知') + '：' + escapeHtml(f ? f.nameZh : '') + ' → ' + escapeHtml(t ? t.nameZh : '') + '">' +
-            escapeHtml(f ? f.nameZh : '') + '→' + escapeHtml(t ? t.nameZh : '') + '</div>';
-        });
-        html += '</div></div>';
-      }
+      html += renderTrainSeatMapHtml(train, issued);
     });
 
     box.innerHTML = html || emptyState('暂无已出票订单');
+  }
+
+  /* ================= 自动仿真面板 ================= */
+
+  var lastSimSummary = null; // 保留最近一次仿真结果，切页签不丢
+
+  function refreshSimLineSelect() {
+    var sel = $('#sim-line');
+    var lines = Domain.listLines();
+    var prev = sel.value;
+    sel.innerHTML = lines.map(function (l) {
+      return '<option value="' + escapeHtml(l.id) + '">' + escapeHtml(l.name) + '（' + l.stationSeq.length + ' 站 · 大站 ' + (l.majorNos || []).length + '）</option>';
+    }).join('') + '<option value="__auto__">＋ 自动生成模拟线路</option>';
+    if (prev && (lines.some(function (l) { return l.id === prev; }) || prev === '__auto__')) sel.value = prev;
+    syncSimAutoField();
+  }
+
+  function syncSimAutoField() {
+    $('#sim-auto-field').hidden = $('#sim-line').value !== '__auto__';
+  }
+
+  function renderSimResults() {
+    if (!lastSimSummary) return;
+    var s = lastSimSummary;
+
+    // 统计卡片
+    $('#sim-stats').innerHTML =
+      statCard('总请求', s.totalRequests, 'is-blue') +
+      statCard('已出票', s.totalIssued, 'is-green') +
+      statCard('候补中', s.totalWaiting, 'is-amber') +
+      statCard('出票率', s.issuedRate.toFixed(1) + '%', 'is-green');
+
+    // 每车次摘要表
+    var meta = global.Simulation.TYPE_META;
+    var rows = Object.keys(s.perTrain).map(function (code) {
+      var st = s.perTrain[code];
+      var tm = meta[global.Simulation.typeOfTrain(st.train)];
+      var stops = st.train.stationSeq.length;
+      var majors = st.train.stationSeq.filter(function (no) {
+        return (s.summaryLineMajorNos || []).indexOf(no) !== -1;
+      }).length;
+      return '<tr><td><strong>' + escapeHtml(code) + '</strong></td>' +
+        '<td><span class="badge ' + (tm ? tm.badge : 'badge-count') + '">' + (tm ? tm.label : '自定义') + '</span></td>' +
+        '<td>' + st.train.seatCount + ' 座 / 停 ' + stops + ' 站（大站 ' + majors + '）</td>' +
+        '<td>' + st.requests + '</td><td style="color:var(--green);font-weight:700;">' + st.issued + '</td>' +
+        '<td style="color:#B45309;font-weight:700;">' + st.waiting + '</td></tr>';
+    }).join('');
+    $('#sim-summary').innerHTML = '<table><thead><tr><th>车次</th><th>类型</th><th>运力</th><th>请求</th><th>出票</th><th>候补</th></tr></thead><tbody>' +
+      rows + '</tbody></table>';
+    $('#sim-summary-card').hidden = false;
+
+    // 按车次分组的座位图
+    var html = '';
+    s.trains.forEach(function (t) {
+      var issued = Ticketing.ordersOfTrain(t.code).filter(function (o) { return o.status === 'issued'; });
+      if (!issued.length) return;
+      html += renderTrainSeatMapHtml(t, issued);
+    });
+    $('#sim-seatmap').innerHTML = html || emptyState('本次仿真无出票订单');
+    $('#sim-seatmap-card').hidden = false;
+  }
+
+  function statCard(label, value, cls) {
+    return '<div class="stat-card ' + (cls || '') + '"><div class="stat-label">' + label + '</div>' +
+      '<div class="stat-value">' + value + '</div></div>';
+  }
+
+  function bindSimForm() {
+    $('#sim-line').addEventListener('change', syncSimAutoField);
+
+    $('#sim-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var cfg = {
+        lineId: $('#sim-line').value,
+        autoStationCount: Number($('#sim-auto-stations').value) || 10,
+        countFull: $('#sim-count-full').value,
+        countSection: $('#sim-count-section').value,
+        countExpress: $('#sim-count-express').value,
+        countSkip: $('#sim-count-skip').value,
+        seats: $('#sim-seats').value,
+        passengers: $('#sim-passengers').value,
+        requests: $('#sim-requests').value,
+        seed: $('#sim-seed').value
+      };
+      var res = global.Simulation.runSimulation(cfg);
+      if (!res.ok) { toast(res.msg, 'error'); return; }
+      lastSimSummary = res.summary;
+      // 提供线路大站集合供摘要表标注
+      lastSimSummary.summaryLineMajorNos = res.summary.line.majorNos || [];
+      renderSimResults();
+      toast('仿真完成：' + res.summary.totalRequests + ' 次请求，出票 ' + res.summary.totalIssued +
+        '，候补 ' + res.summary.totalWaiting, 'success');
+      renderAll();
+    });
+
+    $('#sim-cleanup').addEventListener('click', function () {
+      if (!confirmAction('确认清理全部仿真数据（sim 标记的线路/车次/乘车人/订单与自动生成的模拟车站）？手动登记的数据不受影响。')) return;
+      global.Simulation.cleanupSimulation();
+      lastSimSummary = null;
+      $('#sim-stats').innerHTML = '<div class="empty-state">仿真数据已清理，可重新配置参数运行</div>';
+      $('#sim-summary-card').hidden = true;
+      $('#sim-seatmap-card').hidden = true;
+      toast('仿真数据已清理', 'success');
+      renderAll();
+    });
   }
 
   /* ================= 标签切换 ================= */
@@ -484,13 +737,19 @@
 
   function renderAll() {
     renderStations();
+    renderLines();
+    refreshLineStationSelect();
+    renderLineDraft();
     renderPassengers();
     refreshTrainStationSelect();
+    refreshTrainLineSelect();
     renderTrainDraft();
     renderTrains();
     renderBooking();
     renderOrders();
     renderSeatMap();
+    refreshSimLineSelect();
+    renderSimResults();
   }
 
   /* ================= 导出 ================= */
@@ -501,11 +760,14 @@
       bindTabs();
       bindStationForm();
       bindStationDelete();
+      bindLineForm();
+      bindLineDelete();
       bindPassengerForm();
       bindPassengerDelete();
       bindTrainForm();
       bindTrainDelete();
       bindBookingForm();
+      bindSimForm();
     },
     renderAll: renderAll,
     switchTab: switchTab
