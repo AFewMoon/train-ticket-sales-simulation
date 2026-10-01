@@ -295,7 +295,9 @@
       var seqHtml = t.stationSeq.map(function (no, i) {
         var s = Domain.getStation(no);
         var name = s ? s.nameZh : no;
-        return (i > 0 ? '<span class="chain-arrow">→</span>' : '') + '<span class="chain-node">' + escapeHtml(name) + '</span>';
+        var major = line && (line.majorNos || []).indexOf(no) !== -1;
+        return (i > 0 ? '<span class="chain-arrow">→</span>' : '') +
+          '<span class="chain-node' + (major ? ' is-major" title="大站' : '"') + '">' + escapeHtml(name) + (major ? '★' : '') + '</span>';
       }).join('');
       return '<tr><td>' + codeBadge(t.code) + lineBadge + simBadge + '</td><td>' + seqHtml + '</td><td>' + t.seatCount +
         ' 座</td><td><button class="btn btn-danger" data-del-train="' + escapeHtml(t.code) + '">删除</button></td></tr>';
@@ -317,13 +319,31 @@
 
   function refreshTrainStationSelect() {
     var sel = $('#train-station-select');
-    var stations = Domain.listStations();
+    var lineId = $('#train-line') ? $('#train-line').value : '';
+    var line = lineId ? Domain.getLine(lineId) : null;
     var inDraft = {};
     trainDraft.stationSeq.forEach(function (no) { inDraft[no] = true; });
-    var options = stations.filter(function (s) { return !inDraft[s.no]; })
-      .map(function (s) { return '<option value="' + escapeHtml(s.no) + '">' + escapeHtml(s.nameZh) + '（' + escapeHtml(s.no) + '）</option>'; })
-      .join('');
-    sel.innerHTML = options || '<option value="">无可用车站</option>';
+
+    var candidates;
+    if (line) {
+      // 挂线：候选 = 线路站序中最后一个已选站之后的站（随路线成形单调收缩）
+      var lastIdx = -1;
+      trainDraft.stationSeq.forEach(function (no) {
+        var idx = line.stationSeq.indexOf(no);
+        if (idx > lastIdx) lastIdx = idx;
+      });
+      candidates = line.stationSeq.slice(lastIdx + 1)
+        .filter(function (no) { return !inDraft[no]; });
+    } else {
+      candidates = Domain.listStations()
+        .map(function (s) { return s.no; })
+        .filter(function (no) { return !inDraft[no]; });
+    }
+    var options = candidates.map(function (no) {
+      var s = Domain.getStation(no);
+      return '<option value="' + escapeHtml(no) + '">' + escapeHtml(s ? s.nameZh : no) + '（' + escapeHtml(no) + '）</option>';
+    }).join('');
+    sel.innerHTML = options || '<option value="">无可用车站' + (line ? '——线路剩余站已选完' : '') + '</option>';
   }
 
   function bindTrainForm() {
@@ -349,17 +369,22 @@
     });
     $('#seat-plus').addEventListener('click', function () {
       var input = $('#train-seat-count');
-      input.value = Math.min(50, (Number(input.value) || 1) + 1);
+      input.value = Math.min(2147483647, (Number(input.value) || 1) + 1);
     });
+
+    // 挂接线路变化时，途经站候选范围随路线成形收缩
+    $('#train-line').addEventListener('change', refreshTrainStationSelect);
 
     $('#train-form').addEventListener('submit', function (e) {
       e.preventDefault();
       var lineId = $('#train-line').value || null;
-      var res = Domain.addTrain(trainDraft.stationSeq, $('#train-seat-count').value, lineId);
+      var customCode = $('#train-code').value.trim();
+      var res = Domain.addTrain(trainDraft.stationSeq, $('#train-seat-count').value, lineId, null, customCode);
       if (!res.ok) { toast(res.msg, 'error'); return; }
       toast('车次登记成功：' + res.train.code, 'success');
       trainDraft.stationSeq = [];
       $('#train-seat-count').value = 5;
+      $('#train-code').value = '';
       renderTrainDraft();
       refreshTrainStationSelect();
       renderAll();
@@ -734,9 +759,11 @@
       lastSimSummary = res.summary;
       // 提供线路大站集合供摘要表标注
       lastSimSummary.summaryLineMajorNos = res.summary.line.majorNos || [];
+      // 随机种子（-1）回显实际使用的种子，便于复现
+      $('#sim-seed').value = res.summary.usedSeed;
       renderSimResults();
-      toast('仿真完成：' + res.summary.totalRequests + ' 次请求，出票 ' + res.summary.totalIssued +
-        '，候补 ' + res.summary.totalWaiting, 'success');
+      toast('仿真完成（种子 ' + res.summary.usedSeed + '）: ' + res.summary.totalRequests + ' 次请求，出票 ' +
+        res.summary.totalIssued + '，候补 ' + res.summary.totalWaiting, 'success');
       renderAll();
     });
 

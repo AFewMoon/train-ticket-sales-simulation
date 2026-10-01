@@ -137,8 +137,8 @@
           <form id="train-form" autocomplete="off">
             <div class="field">
               <label for="train-code">车次号</label>
-              <input type="text" id="train-code" readonly />
-              <p class="hint">系统随机生成唯一车次号</p>
+              <input type="text" id="train-code" placeholder="留空则随机生成" maxlength="5" />
+              <p class="hint">可自定义不重复车次号（G/D/K + 4 位数字，首位 1~3/6~8，末位奇数）</p>
             </div>
             <div class="field">
               <label for="train-line">所属线路（可选）</label>
@@ -162,7 +162,7 @@
               <label for="train-seat-count">座位数</label>
               <div class="stepper">
                 <button type="button" class="stepper-btn" id="seat-minus" aria-label="减少">−</button>
-                <input type="number" id="train-seat-count" min="1" max="50" value="5" />
+                <input type="number" id="train-seat-count" min="1" max="2147483647" value="5" />
                 <button type="button" class="stepper-btn" id="seat-plus" aria-label="增加">＋</button>
               </div>
             </div>
@@ -224,10 +224,10 @@
               <div class="refund-sim-ctl">
                 <label for="refund-rate">退票比率</label>
                 <input type="number" id="refund-rate" min="1" max="100" value="5" />%
+                <button type="button" class="btn btn-danger" id="refund-sim-btn">退票模拟</button>
               </div>
             </div>
             <div id="waiting-list" class="waiting-list"></div>
-            <button type="button" class="btn btn-danger-outline btn-block" id="refund-sim-btn" style="margin-top: 14px;">退票模拟</button>
             <p class="hint" style="margin-top: 8px;">按比率随机退票，释放区间后自动按时间戳补录候补</p>
           </div>
         </div>
@@ -282,15 +282,15 @@
               <div class="sim-type-grid">
                 <div class="sim-type-item">
                   <span class="badge badge-type-direct">直达车</span>
-                  <input type="number" id="sim-count-direct" min="0" max="10" value="2" />
+                  <input type="number" id="sim-count-direct" min="0" max="2147483647" value="2" />
                 </div>
                 <div class="sim-type-item">
                   <span class="badge badge-type-express">大站快车</span>
-                  <input type="number" id="sim-count-express" min="0" max="10" value="2" />
+                  <input type="number" id="sim-count-express" min="0" max="2147483647" value="2" />
                 </div>
                 <div class="sim-type-item">
                   <span class="badge badge-type-skip">隔站停车</span>
-                  <input type="number" id="sim-count-skip" min="0" max="10" value="2" />
+                  <input type="number" id="sim-count-skip" min="0" max="2147483647" value="2" />
                 </div>
               </div>
               <p class="hint">直达车 / 大站快车为 G 字头，隔站停车为 D 字头</p>
@@ -298,22 +298,22 @@
             <div class="field two-col">
               <div>
                 <label for="sim-seats">每车座位数</label>
-                <input type="number" id="sim-seats" min="1" max="20" value="4" />
+                <input type="number" id="sim-seats" min="1" max="2147483647" value="4" />
               </div>
               <div>
                 <label for="sim-passengers">乘车人数</label>
-                <input type="number" id="sim-passengers" min="1" max="100" value="12" />
+                <input type="number" id="sim-passengers" min="1" max="2147483647" value="12" />
               </div>
             </div>
             <div class="field two-col">
               <div>
                 <label for="sim-requests">每车购票请求数</label>
-                <input type="number" id="sim-requests" min="1" max="50" value="10" />
+                <input type="number" id="sim-requests" min="1" max="2147483647" value="10" />
               </div>
               <div>
                 <label for="sim-seed">随机种子</label>
-                <input type="number" id="sim-seed" min="0" max="999999" value="42" />
-                <p class="hint">同一种子结果可复现</p>
+                <input type="number" id="sim-seed" min="-1" max="2147483647" value="-1" />
+                <p class="hint">-1 为随机种子；其余值结果可复现</p>
               </div>
             </div>
             <button type="submit" class="btn btn-primary btn-block" id="sim-run">运行仿真</button>

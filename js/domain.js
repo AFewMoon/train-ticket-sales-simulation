@@ -78,7 +78,28 @@
   }
 
   /**
-   * 随机生成唯一车次号：字头 + 3~4 位数字。
+   * 车次号规则：字头 G/D/K + 严格 4 位数字——
+   * 首位 ∈ {1,2,3,6,7,8}，中间两位任意，末位为奇数。
+   */
+  var CODE_FIRST_DIGITS = ['1', '2', '3', '6', '7', '8'];
+  var CODE_LAST_DIGITS = ['1', '3', '5', '7', '9'];
+  var CODE_RE = /^[GDK][123678]\d{2}[13579]$/;
+
+  function isValidTrainCode(code) {
+    return typeof code === 'string' && CODE_RE.test(code);
+  }
+
+  /** 按位值规则生成随机 4 位数字部分 */
+  function randomCodeNumber(rng) {
+    var first = CODE_FIRST_DIGITS[Math.floor((rng ? rng() : Math.random()) * CODE_FIRST_DIGITS.length)];
+    var mid1 = Math.floor((rng ? rng() : Math.random()) * 10);
+    var mid2 = Math.floor((rng ? rng() : Math.random()) * 10);
+    var last = CODE_LAST_DIGITS[Math.floor((rng ? rng() : Math.random()) * CODE_LAST_DIGITS.length)];
+    return first + mid1 + mid2 + last;
+  }
+
+  /**
+   * 生成唯一车次号：字头 + 4 位数字（首位 1~3/6~8、末位奇数）。
    * prefix 可选（'G' | 'D' | 'K'）：指定时只使用该字头；缺省时随机三选一（手动登记场景）。
    */
   function allocateTrainCode(prefix) {
@@ -88,8 +109,7 @@
     var prefixes = (prefix && /^[GDK]$/.test(prefix)) ? [prefix] : ['G', 'D', 'K'];
     for (var attempt = 0; attempt < 5000; attempt++) {
       var p = prefixes[Math.floor(Math.random() * prefixes.length)];
-      var num = 100 + Math.floor(Math.random() * 9900); // 100-9999
-      var code = p + num;
+      var code = p + randomCodeNumber(null);
       if (!used.has(code)) {
         seq.trainCodes.push(code);
         saveSeq();
@@ -273,7 +293,7 @@
 
   /* ---------- 车次 ---------- */
 
-  function addTrain(stationSeq, seatCount, lineId, codePrefix) {
+  function addTrain(stationSeq, seatCount, lineId, codePrefix, customCode) {
     if (!Array.isArray(stationSeq) || stationSeq.length < 2) {
       return { ok: false, msg: '车次至少需要 2 个途经车站' };
     }
@@ -283,8 +303,8 @@
       seen[stationSeq[i]] = true;
     }
     seatCount = Math.floor(Number(seatCount));
-    if (!isFinite(seatCount) || seatCount < 1 || seatCount > 50) {
-      return { ok: false, msg: '座位数需在 1-50 之间' };
+    if (!isFinite(seatCount) || seatCount < 1 || seatCount > 2147483647) {
+      return { ok: false, msg: '座位数需为 1 ~ 2147483647 的整数' };
     }
     var train = { code: null, stationSeq: stationSeq.slice(), seatCount: seatCount };
     if (lineId) {
@@ -295,8 +315,24 @@
       }
       train.lineId = lineId;
     }
-    var code = allocateTrainCode(codePrefix);
-    if (code === null) return { ok: false, msg: '车次号生成失败' };
+    var code;
+    var custom = String(customCode || '').trim().toUpperCase();
+    if (custom) {
+      // 自定义车次号：格式（字头 + 4 位，首位 1~3/6~8、末位奇数）+ 唯一性
+      if (!isValidTrainCode(custom)) {
+        return { ok: false, msg: '车次号格式不正确：需为 G/D/K + 4 位数字（首位 1~3/6~8，末位奇数），如 G1235' };
+      }
+      var usedCheck = new Set();
+      listTrains().forEach(function (t) { usedCheck.add(t.code); });
+      seq.trainCodes.forEach(function (c) { usedCheck.add(c); });
+      if (usedCheck.has(custom)) return { ok: false, msg: '车次号已存在：' + custom };
+      code = custom;
+      seq.trainCodes.push(code);
+      saveSeq();
+    } else {
+      code = allocateTrainCode(codePrefix);
+      if (code === null) return { ok: false, msg: '车次号生成失败' };
+    }
     train.code = code;
     var trains = listTrains();
     trains.push(train);
@@ -361,6 +397,7 @@
     removeTrain: removeTrain,
     getTrain: getTrain,
     isValidIdCard: isValidIdCard,
+    isValidTrainCode: isValidTrainCode,
     makeValidIdCard: makeValidIdCard,
     maskIdCard: maskIdCard,
     isValidRange: isValidRange,

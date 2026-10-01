@@ -445,9 +445,10 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 .sim-results { animation: fadeIn .3s ease; }
 
 /* ============ 退票模拟控件 ============ */
-.refund-sim-ctl { display: flex; align-items: center; gap: 6px; }
+.refund-sim-ctl { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .refund-sim-ctl label { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 0; white-space: nowrap; }
 .refund-sim-ctl input { width: 64px; padding: 5px 8px; font-size: 12px; text-align: center; }
+.refund-sim-ctl .btn { padding: 5px 10px; font-size: 12px; }
 
 .col-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
 

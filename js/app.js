@@ -12,6 +12,6 @@
 
     global.UI.bindAll();
     global.UI.renderAll();
-    global.UI.switchTab('stations');
+    global.UI.switchTab('sim');
   });
 })(window);

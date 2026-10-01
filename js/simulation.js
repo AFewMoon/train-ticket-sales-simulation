@@ -105,7 +105,7 @@
     ];
     var created = [];
     plan.forEach(function (item) {
-      var type = item[0], count = Math.max(0, Math.min(10, Math.floor(Number(item[1]) || 0)));
+      var type = item[0], count = Math.max(0, Math.floor(Number(item[1]) || 0));
       for (var i = 0; i < count; i++) {
         var stops = pickStops(rng, line, type);
         if (!stops || stops.length < 2) continue;
@@ -133,13 +133,19 @@
    * 返回 { ok, msg?, summary }
    */
   function runSimulation(cfg) {
+    // 种子：-1（或未填）表示随机种子，其余值结果可复现
+    var seedVal = Number(cfg.seed);
+    var seed = (cfg.seed === '' || cfg.seed === undefined || cfg.seed === null || !isFinite(seedVal) || seedVal < 0)
+      ? Math.floor(Math.random() * 2147483647)
+      : Math.floor(seedVal);
+
     // 1. 线路：选择已有线路，或自动生成一条 sim 线路
     var line;
     if (cfg.lineId === '__auto__') {
       var stationCount = Math.max(4, Math.min(30, Math.floor(Number(cfg.autoStationCount) || 10)));
       var seq = [];
       for (var s = 0; s < stationCount; s++) {
-        var res = Domain.addStation('模拟站' + (s + 1) + '-' + cfg.seed, 'Sim' + (s + 1));
+        var res = Domain.addStation('模拟站' + (s + 1) + '-' + seed, 'Sim' + (s + 1));
         if (!res.ok) return { ok: false, msg: '生成模拟车站失败：' + res.msg };
         seq.push(res.station.no);
       }
@@ -147,7 +153,7 @@
       var stations = Domain.listStations();
       stations.forEach(function (st) { if (st.nameEn.indexOf('Sim') === 0) st.sim = true; });
       global.Storage.write(global.Storage.KEYS.stations, stations);
-      var lineRes = Domain.addLine('模拟线路-' + cfg.seed, seq, null, { sim: true });
+      var lineRes = Domain.addLine('模拟线路-' + seed, seq, null, { sim: true });
       if (!lineRes.ok) return { ok: false, msg: '生成模拟线路失败：' + lineRes.msg };
       line = lineRes.line;
     } else {
@@ -155,11 +161,11 @@
       if (!line) return { ok: false, msg: '请选择仿真线路' };
     }
 
-    var rng = makeRng(cfg.seed);
+    var rng = makeRng(seed);
 
     // 2. 生成 sim 乘车人（合法身份证）
     var passengers = [];
-    var pCount = Math.max(1, Math.min(100, Math.floor(Number(cfg.passengers) || 10)));
+    var pCount = Math.max(1, Math.floor(Number(cfg.passengers) || 10));
     for (var p = 0; p < pCount; p++) {
       var pr = Domain.addPassenger(genPassengerName(rng), genIdCard(rng));
       if (pr.ok) { pr.passenger.sim = true; passengers.push(pr.passenger); }
@@ -177,7 +183,7 @@
     if (!trains.length) return { ok: false, msg: '未能生成任何车次，请检查各类车次数参数' };
 
     // 4. 编排购票请求：每车次 requests 条，随机乘车人 + 合法区间
-    var reqCount = Math.max(1, Math.min(50, Math.floor(Number(cfg.requests) || 10)));
+    var reqCount = Math.max(1, Math.floor(Number(cfg.requests) || 10));
     var events = [];
     var simOrderIds = {};
     var perTrain = {};
@@ -230,7 +236,8 @@
         totalRequests: totalRequests,
         totalIssued: totalIssued,
         totalWaiting: totalWaiting,
-        issuedRate: totalRequests ? (totalIssued / totalRequests * 100) : 0
+        issuedRate: totalRequests ? (totalIssued / totalRequests * 100) : 0,
+        usedSeed: seed
       }
     };
   }
