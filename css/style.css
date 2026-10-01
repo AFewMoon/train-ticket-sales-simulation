@@ -442,6 +442,62 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 
 .sim-results { animation: fadeIn .3s ease; }
 
+/* ============ 定时扫描控件 ============ */
+.auto-scan-ctl { display: flex; align-items: center; gap: 8px; }
+.auto-scan-ctl label { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 0; }
+.auto-scan-ctl select { width: auto; padding: 6px 10px; font-size: 12px; }
+
+/* ============ 事件时间线 ============ */
+.event-timeline {
+  position: relative;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-left: 18px;
+}
+.event-timeline::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--line);
+  border-radius: 1px;
+}
+.ev-item {
+  position: relative;
+  padding: 6px 0 6px 14px;
+  animation: fadeIn .25s ease;
+}
+.ev-item::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 13px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--primary-500);
+  box-shadow: 0 0 0 2px #fff;
+}
+.ev-item.ev-issued::before, .ev-item.ev-fulfilled::before { background: var(--green); }
+.ev-item.ev-waitlisted::before, .ev-item.ev-autoscan::before { background: var(--amber); }
+.ev-item.ev-refund::before { background: var(--red); }
+.ev-head { display: flex; align-items: center; gap: 8px; }
+.ev-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--primary-100);
+  color: var(--primary-700);
+}
+.ev-item.ev-issued .ev-badge, .ev-item.ev-fulfilled .ev-badge { background: var(--green-bg); color: var(--green); }
+.ev-item.ev-waitlisted .ev-badge, .ev-item.ev-autoscan .ev-badge { background: var(--amber-bg); color: #B45309; }
+.ev-item.ev-refund .ev-badge { background: var(--red-bg); color: var(--red); }
+.ev-time { font-size: 11px; color: var(--text-3); }
+.ev-detail { font-size: 13px; color: var(--text-2); margin-top: 2px; }
+
 /* ============ Toast ============ */
 .toast-box {
   position: fixed;

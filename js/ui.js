@@ -528,13 +528,53 @@
       var status = o.status === 'issued'
         ? '<span class="badge badge-issued">已出票</span>'
         : '<span class="badge badge-waiting">候补中</span>';
+      var op = '<button class="btn btn-danger" data-refund-order="' + escapeHtml(o.id) + '">' +
+        (o.status === 'issued' ? '退票' : '取消候补') + '</button>';
       return '<tr><td>' + escapeHtml(o.trainCode) + '</td><td>' + escapeHtml(p ? p.name : '未知') +
         '</td><td>' + escapeHtml(f ? f.nameZh : st[o.fromIdx]) + ' → ' + escapeHtml(t ? t.nameZh : st[o.toIdx]) +
         '</td><td>' + status + '</td><td>' + (o.seatNo !== undefined && o.seatNo !== null ? '第 ' + o.seatNo + ' 号座位' : '—') +
-        '</td></tr>';
+        '</td><td>' + op + '</td></tr>';
     }).join('');
-    wrap.innerHTML = '<table><thead><tr><th>车次</th><th>乘车人</th><th>区间</th><th>状态</th><th>座位</th></tr></thead><tbody>' +
+    wrap.innerHTML = '<table><thead><tr><th>车次</th><th>乘车人</th><th>区间</th><th>状态</th><th>座位</th><th>操作</th></tr></thead><tbody>' +
       rows + '</tbody></table>';
+  }
+
+  function bindOrderRefund() {
+    $('#order-table-wrap').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-refund-order]');
+      if (!btn) return;
+      var id = btn.getAttribute('data-refund-order');
+      if (!confirmAction('确认退票 / 取消该订单？座位区间将释放并自动触发候补兑现。')) return;
+      var res = global.Ticketing.refundOrder(id);
+      if (!res.ok) { toast(res.msg, 'error'); return; }
+      toast(res.fulfilled > 0 ? '退票成功，候补兑现 ' + res.fulfilled + ' 单' : '退票成功', 'success');
+      renderAll();
+    });
+  }
+
+  /* ================= 事件时间线 ================= */
+
+  function relTime(ts) {
+    var d = new Date(ts);
+    return d.toLocaleTimeString('zh-CN', { hour12: false });
+  }
+
+  function renderEventLog() {
+    var box = $('#event-timeline');
+    var events = global.Ticketing.Events.list(50);
+    if (!events.length) {
+      box.innerHTML = emptyState('暂无事件，购票 / 出票 / 退票后在此实时记录');
+      return;
+    }
+    var types = global.Ticketing.Events.TYPES;
+    box.innerHTML = events.map(function (ev) {
+      var meta = types[ev.type] || { label: ev.type, cls: '' };
+      var train = ev.trainCode ? ' · ' + escapeHtml(ev.trainCode) : '';
+      return '<div class="ev-item ' + meta.cls + '">' +
+        '<div class="ev-head"><span class="ev-badge">' + meta.label + '</span>' +
+        '<span class="ev-time">' + relTime(ev.ts) + train + '</span></div>' +
+        '<div class="ev-detail">' + escapeHtml(ev.detail) + '</div></div>';
+    }).join('');
   }
 
   /** 座位区间图：每行一个座位，彩色区间块按站点轴定位 */
@@ -709,6 +749,47 @@
     });
   }
 
+  /* ================= 定时自动扫描候补 ================= */
+
+  var AUTO_KEY = 'tts:autoScanInterval';
+  var autoTimer = null;
+  var autoScanning = false;
+
+  function getAutoInterval() {
+    return Number(global.localStorage.getItem(AUTO_KEY) || '5');
+  }
+
+  function startAutoScan() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    var sec = getAutoInterval();
+    if (!sec) return;
+    autoTimer = setInterval(function () {
+      if (autoScanning) return;
+      autoScanning = true;
+      try {
+        var fulfilled = global.Ticketing.processAllWaiting();
+        if (fulfilled > 0) {
+          global.Ticketing.Events.push('autoscan', '自动扫描兑现 ' + fulfilled + ' 单候补', '', '');
+          toast('自动扫描：候补兑现 ' + fulfilled + ' 单', 'success');
+          renderAll();
+        }
+      } finally {
+        autoScanning = false;
+      }
+    }, sec * 1000);
+  }
+
+  function bindAutoScan() {
+    var sel = $('#auto-scan-interval');
+    sel.value = String(getAutoInterval());
+    sel.addEventListener('change', function () {
+      global.localStorage.setItem(AUTO_KEY, sel.value);
+      startAutoScan();
+      toast(sel.value === '0' ? '自动扫描已关闭' : '自动扫描间隔：每 ' + sel.value + ' 秒', 'info');
+    });
+    startAutoScan();
+  }
+
   /* ================= 标签切换 ================= */
 
   function switchTab(name) {
@@ -750,6 +831,7 @@
     renderSeatMap();
     refreshSimLineSelect();
     renderSimResults();
+    renderEventLog();
   }
 
   /* ================= 导出 ================= */
@@ -767,6 +849,8 @@
       bindTrainForm();
       bindTrainDelete();
       bindBookingForm();
+      bindOrderRefund();
+      bindAutoScan();
       bindSimForm();
     },
     renderAll: renderAll,

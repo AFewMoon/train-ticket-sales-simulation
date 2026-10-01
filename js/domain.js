@@ -318,6 +318,16 @@
     return listTrains().find(function (t) { return t.code === code; }) || null;
   }
 
+  /** 删除订单（退票/取消候补时由 ticketing 层在维护桶之后调用） */
+  function removeOrder(id) {
+    var orders = listOrders();
+    var idx = orders.findIndex(function (o) { return o.id === id; });
+    if (idx === -1) return { ok: false, msg: '订单不存在' };
+    orders.splice(idx, 1);
+    if (!global.Storage.write(K.orders, orders)) return { ok: false, msg: '保存失败' };
+    return { ok: true };
+  }
+
   /** 合法区间：站序中起点下标 < 终点下标 */
   function isValidRange(fromIdx, toIdx) {
     return fromIdx >= 0 && toIdx > fromIdx;
@@ -332,6 +342,7 @@
     listPassengers: listPassengers,
     listTrains: listTrains,
     listOrders: listOrders,
+    removeOrder: removeOrder,
     addStation: addStation,
     removeStation: removeStation,
     getStation: getStation,

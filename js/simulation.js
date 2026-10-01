@@ -79,8 +79,8 @@
     return stops;
   }
 
-  /** 各类型车次字头：全程车 K（普速全线停靠）、区间直达与大站快车 G、隔站停车 D */
-  var TYPE_PREFIX = { full: 'K', section: 'G', express: 'G', skip: 'D' };
+  /** 各类型车次字头：全程车/区间直达/大站快车 G、隔站停车 D */
+  var TYPE_PREFIX = { full: 'G', section: 'G', express: 'G', skip: 'D' };
 
   var TYPE_META = {
     full: { label: '全程车', badge: 'badge-type-full' },

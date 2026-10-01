@@ -211,8 +211,24 @@
         <div class="card list-card">
           <div class="list-head">
             <h2 class="card-title">候补队列</h2>
+            <div class="auto-scan-ctl">
+              <label for="auto-scan-interval">自动扫描</label>
+              <select id="auto-scan-interval">
+                <option value="0">关闭</option>
+                <option value="2">每 2 秒</option>
+                <option value="5" selected>每 5 秒</option>
+                <option value="10">每 10 秒</option>
+              </select>
+            </div>
           </div>
           <div id="waiting-list" class="waiting-list"></div>
+        </div>
+        <div class="card" style="margin-top: 20px;">
+          <div class="list-head">
+            <h2 class="card-title">事件时间线</h2>
+            <span class="hint" style="margin: 0;">购票 / 出票 / 候补 / 退票 / 兑现 实时记录</span>
+          </div>
+          <div id="event-timeline" class="event-timeline"></div>
         </div>
       </div>
     </section>

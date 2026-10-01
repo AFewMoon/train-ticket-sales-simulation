@@ -11,6 +11,8 @@
       passengers: PREFIX + 'passengers',
       trains: PREFIX + 'trains',
       orders: PREFIX + 'orders',
+      queues: PREFIX + 'queues',
+      events: PREFIX + 'events',
       seq: PREFIX + 'seq',
       seeded: PREFIX + 'seeded'
     },
