@@ -381,28 +381,34 @@
       Ticketing.waitingOrdersOfTrain(code).length + ' 单';
   }
 
-  /** 起点/终点联动：起点下拉展示全部站序；终点仅展示起点之后的站 */
+  /** 起点/终点联动：起点下拉展示全部站序；终点仅展示起点之后的站。
+      prev 下标只在车次未变时恢复，避免跨车次的站序错位（范围溢出来源之一） */
+  var lastBookingTrainCode = null;
+
   function renderRangeSelects() {
     var code = $('#booking-train').value;
     var train = code ? Domain.getTrain(code) : null;
     var fromSel = $('#booking-from'), toSel = $('#booking-to');
     if (!train) {
+      lastBookingTrainCode = null;
       fromSel.innerHTML = '<option value="">—</option>';
       toSel.innerHTML = '<option value="">—</option>';
       toSel.disabled = true;
       return;
     }
     toSel.disabled = false;
+    var sameTrain = lastBookingTrainCode === code;
+    lastBookingTrainCode = code;
     var prevFrom = fromSel.value;
     fromSel.innerHTML = train.stationSeq.map(function (no, i) {
       var s = Domain.getStation(no);
       return '<option value="' + i + '">' + escapeHtml(s ? s.nameZh : no) + '</option>';
     }).join('');
-    if (prevFrom !== '' && Number(prevFrom) < train.stationSeq.length) fromSel.value = prevFrom;
-    renderToOptions();
+    if (sameTrain && prevFrom !== '' && Number(prevFrom) < train.stationSeq.length) fromSel.value = prevFrom;
+    renderToOptions(sameTrain);
   }
 
-  function renderToOptions() {
+  function renderToOptions(sameTrain) {
     var code = $('#booking-train').value;
     var train = code ? Domain.getTrain(code) : null;
     if (!train) return;
@@ -416,7 +422,7 @@
       options += '<option value="' + i + '">' + escapeHtml(s ? s.nameZh : no_) + '</option>';
     }
     toSel.innerHTML = options || '<option value="">无合法终点</option>';
-    if (prevTo && Number(prevTo) > fromIdx && Number(prevTo) < train.stationSeq.length) toSel.value = prevTo;
+    if (sameTrain && prevTo && Number(prevTo) > fromIdx && Number(prevTo) < train.stationSeq.length) toSel.value = prevTo;
   }
 
   function renderWaitingList() {
@@ -447,7 +453,7 @@
       renderCapacityHint();
       renderRangeSelects();
     });
-    $('#booking-from').addEventListener('change', renderToOptions);
+    $('#booking-from').addEventListener('change', function () { renderToOptions(true); });
 
     $('#booking-form').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -515,6 +521,7 @@
   /* ================= 事件时间线 ================= */
 
   function relTime(ts) {
+    if (ts === undefined || ts === null || isNaN(new Date(ts).getTime())) return '—';
     var d = new Date(ts);
     return d.toLocaleTimeString('zh-CN', { hour12: false });
   }
@@ -528,12 +535,13 @@
     }
     var types = global.Ticketing.Events.TYPES;
     box.innerHTML = events.map(function (ev) {
-      var meta = types[ev.type] || { label: ev.type, cls: '' };
+      // 未知事件类型（旧版数据残留等）显示占位文案，不输出 undefined
+      var meta = types[ev.type] || { label: '事件', cls: '' };
       var train = ev.trainCode ? ' · ' + escapeHtml(ev.trainCode) : '';
       return '<div class="ev-item ' + meta.cls + '">' +
         '<div class="ev-head"><span class="ev-badge">' + meta.label + '</span>' +
         '<span class="ev-time">' + relTime(ev.ts) + train + '</span></div>' +
-        '<div class="ev-detail">' + escapeHtml(ev.detail) + '</div></div>';
+        '<div class="ev-detail">' + escapeHtml(ev.detail === undefined || ev.detail === null ? '' : ev.detail) + '</div></div>';
     }).join('');
   }
 
@@ -724,7 +732,7 @@
 
   /* ================= 数据查询区 ================= */
 
-  var queryState = { trainCode: '', segIdx: -1 };
+  var queryState = { trainCode: '', segIdx: -1, segTrainCode: '' };
 
   function renderQueryArea() {
     var trains = Domain.listTrains();
@@ -740,7 +748,9 @@
 
     var train = Domain.getTrain(queryState.trainCode);
     if (train) {
-      var prevSeg = queryState.segIdx;
+      // 段下标只在车次未变时恢复，避免跨车次的段选择错位
+      var sameQueryTrain = queryState.segTrainCode === queryState.trainCode;
+      var prevSeg = sameQueryTrain ? queryState.segIdx : -1;
       var opts = '<option value="-1">全部订单</option>';
       for (var i = 0; i < train.stationSeq.length - 1; i++) {
         var f = Domain.getStation(train.stationSeq[i]);
@@ -750,6 +760,7 @@
       sSel.innerHTML = opts;
       sSel.value = String(prevSeg >= -1 && prevSeg < train.stationSeq.length - 1 ? prevSeg : -1);
       sSel.disabled = false;
+      queryState.segTrainCode = queryState.trainCode;
     } else {
       sSel.innerHTML = '<option value="-1">—</option>';
       sSel.disabled = true;
@@ -806,7 +817,7 @@
       var jf = Domain.getStation(st[o.fromIdx]), jt = Domain.getStation(st[o.toIdx]);
       return '<tr><td>' + escapeHtml(jf ? jf.nameZh : (st[o.fromIdx] || '未知站')) + ' → ' +
         escapeHtml(jt ? jt.nameZh : (st[o.toIdx] || '未知站')) + '</td>' +
-        '<td>第 ' + o.seatNo + ' 号座位</td></tr>';
+        '<td>' + (o.seatNo !== undefined && o.seatNo !== null ? '第 ' + o.seatNo + ' 号座位' : '—') + '</td></tr>';
     }).join('');
     box.innerHTML = '<p class="hint" style="margin: 4px 0 8px;">' + title + '：共 ' + onSeg.length + ' 张票</p>' +
       '<table><thead><tr><th>完整旅程</th><th>座位</th></tr></thead><tbody>' +

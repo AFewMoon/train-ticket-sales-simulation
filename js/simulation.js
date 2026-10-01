@@ -45,28 +45,35 @@
       var mj = randInt(rng, mi + 1, majors.length - 1);
       stops = [majors[mi], majors[mj]];
     } else if (type === TYPE_EXPRESS) {
-      // 大站快车：随机取两个大站作为始发/终到（不一定线路首末），只停靠区间内大站
-      if (majors.length < 2) return null;
-      var mi2 = randInt(rng, 0, majors.length - 2);
-      var mj2 = randInt(rng, mi2 + 1, majors.length - 1);
+      // 大站快车：随机取两个大站作为始发/终到（不一定线路首末），只停靠区间内大站；
+      // 起终点之间至少停靠 1 站——由选取约束保证（mj2 ≥ mi2 + 2），不再生成与直达车同构的两点快车
+      if (majors.length < 3) return null;
+      var mi2 = randInt(rng, 0, majors.length - 3);
+      var mj2 = randInt(rng, mi2 + 2, majors.length - 1);
       stops = majors.slice(mi2, mj2 + 1);
     } else if (type === TYPE_SKIP) {
       // 隔站停车：随机起终点（不限线路首末），以隔 1~3 站推进，
-      // 途经大站必停（大站优先于随机间隔），终点必停
-      var start = randInt(rng, 0, n - 2);
-      var end = randInt(rng, start + 1, n - 1);
-      var cur = start;
-      stops.push(seq[cur]);
-      while (cur < end) {
-        var gapNext = cur + 1 + randInt(rng, 1, 3);
-        var nextMajor = -1;
-        for (var m = cur + 1; m < end; m++) {
-          if (majors.indexOf(seq[m]) !== -1) { nextMajor = m; break; }
+      // 途经大站必停（大站优先于随机间隔），终点必停；
+      // 起终点之间至少停靠 3 站（stops.length ≥ 5），不满足则重试，线路过短无法满足时返回 null
+      for (var attempt = 0; attempt < 8; attempt++) {
+        var start = randInt(rng, 0, n - 2);
+        // 优先保证足够长的运行区段，减少因随机到短区段而浪费的重试
+        var lo = Math.min(start + 6, n - 1);
+        var end = randInt(rng, lo, n - 1);
+        var cur = start;
+        var candidate = [seq[cur]];
+        while (cur < end) {
+          var gapNext = cur + 1 + randInt(rng, 1, 3);
+          var nextMajor = -1;
+          for (var m = cur + 1; m < end; m++) {
+            if (majors.indexOf(seq[m]) !== -1) { nextMajor = m; break; }
+          }
+          var next = Math.min(gapNext, end);
+          if (nextMajor !== -1 && nextMajor < next) next = nextMajor;
+          candidate.push(seq[next]);
+          cur = next;
         }
-        var next = Math.min(gapNext, end);
-        if (nextMajor !== -1 && nextMajor < next) next = nextMajor;
-        stops.push(seq[next]);
-        cur = next;
+        if (candidate.length >= 5) { stops = candidate; break; }
       }
     }
     return stops;
@@ -81,6 +88,9 @@
     skip: { label: '隔站停车', badge: 'badge-type-skip' }
   };
 
+  /** 各类型车次最小停站数（含起终点）：直达 2、大站快车中途 ≥1、隔站停车中途 ≥3 */
+  var TYPE_MIN_STOPS = { direct: 2, express: 3, skip: 5 };
+
   function generateTrains(line, cfg, rng) {
     var plan = [
       [TYPE_DIRECT, cfg.countDirect],
@@ -90,9 +100,10 @@
     var created = [];
     plan.forEach(function (item) {
       var type = item[0], count = Math.max(0, Math.floor(Number(item[1]) || 0));
+      var minStops = TYPE_MIN_STOPS[type] || 2;
       for (var i = 0; i < count; i++) {
         var stops = pickStops(rng, line, type);
-        if (!stops || stops.length < 2) continue;
+        if (!stops || stops.length < minStops) continue;
         var res = Domain.addTrain(stops, cfg.seats, line.id, TYPE_PREFIX[type]);
         if (!res.ok) continue;
         // 为仿真车次补充类型标记（直接改写并持久化）
