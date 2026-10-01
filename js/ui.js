@@ -550,19 +550,8 @@
     var line = train.lineId ? Domain.getLine(train.lineId) : null;
     var typeMeta = global.Simulation.TYPE_META[global.Simulation.typeOfTrain(train)];
 
-    // 站名轴（大站加 ★）
-    html += '<div class="seat-axis"><div class="axis-spacer"></div><div class="axis-track">';
-    for (var i = 0; i < S; i++) {
-      var s = Domain.getStation(train.stationSeq[i]);
-      var pos = (i / (S - 1)) * 100;
-      var name = (s ? s.nameZh : train.stationSeq[i]) + (line && (line.majorNos || []).indexOf(train.stationSeq[i]) !== -1 ? '★' : '');
-      var align = i === 0 ? '0' : (i === S - 1 ? '100%' : pos + '%');
-      var transform = i === 0 ? 'translateX(0)' : (i === S - 1 ? 'translateX(-100%)' : 'translateX(-50%)');
-      html += '<span class="axis-tick" style="left:' + align + ';transform:' + transform + ';">' + escapeHtml(name) + '</span>';
-    }
-    html += '</div></div>';
-
-    html += '<div style="font-weight:700;color:var(--text-2);font-size:13px;margin-top:6px;">' +
+    // 首行：车次 / 性质 / 线路
+    html += '<div style="font-weight:700;color:var(--text-2);font-size:13px;">' +
       '<span class="badge badge-code-' + train.code[0].toLowerCase() + '">' + escapeHtml(train.code) + '</span>' +
       (typeMeta ? ' <span class="badge ' + typeMeta.badge + '">' + typeMeta.label + '</span>' : '') +
       (line ? ' <span class="badge badge-count">' + escapeHtml(line.name) + '</span>' : '') +
@@ -591,6 +580,19 @@
       });
       html += '</div></div>';
     });
+
+    // 停站轴（大站加 ★），置于座位分配之下
+    html += '<div class="seat-axis"><div class="axis-spacer"></div><div class="axis-track">';
+    for (var i = 0; i < S; i++) {
+      var s = Domain.getStation(train.stationSeq[i]);
+      var pos = (i / (S - 1)) * 100;
+      var name = (s ? s.nameZh : train.stationSeq[i]) + (line && (line.majorNos || []).indexOf(train.stationSeq[i]) !== -1 ? '★' : '');
+      var align = i === 0 ? '0' : (i === S - 1 ? '100%' : pos + '%');
+      var transform = i === 0 ? 'translateX(0)' : (i === S - 1 ? 'translateX(-100%)' : 'translateX(-50%)');
+      html += '<span class="axis-tick" style="left:' + align + ';transform:' + transform + ';">' + escapeHtml(name) + '</span>';
+    }
+    html += '</div></div>';
+
     html += '</div></div>';
     return html;
   }
@@ -642,7 +644,8 @@
       statCard('总请求', s.totalRequests, 'is-blue') +
       statCard('已出票', s.totalIssued, 'is-green') +
       statCard('候补中', s.totalWaiting, 'is-amber') +
-      statCard('出票率', s.issuedRate.toFixed(1) + '%', 'is-green');
+      statCard('出票率', s.issuedRate.toFixed(1) + '%', 'is-green') +
+      statCard('运算时间', (s.elapsedMs !== undefined ? s.elapsedMs : '-') + ' ms', 'is-blue');
 
     // 每车次摘要表
     var meta = global.Simulation.TYPE_META;
@@ -702,7 +705,7 @@
       // 随机种子（-1）回显实际使用的种子，便于复现
       $('#sim-seed').value = res.summary.usedSeed;
       renderSimResults();
-      toast('仿真完成（种子 ' + res.summary.usedSeed + '）: ' + res.summary.totalRequests + ' 次请求，出票 ' +
+      toast('仿真完成（种子 ' + res.summary.usedSeed + '，耗时 ' + res.summary.elapsedMs + ' ms）: ' + res.summary.totalRequests + ' 次请求，出票 ' +
         res.summary.totalIssued + '，候补 ' + res.summary.totalWaiting, 'success');
       renderAll();
     });

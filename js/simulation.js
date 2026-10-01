@@ -117,6 +117,9 @@
    * 返回 { ok, msg?, summary }
    */
   function runSimulation(cfg) {
+    // 运算耗时计时起点（performance.now 不可用时回退 Date.now，保证 file:// 直开可靠）
+    var t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
     // 种子：-1（或未填）表示随机种子，其余值结果可复现
     var seedVal = Number(cfg.seed);
     var seed = (cfg.seed === '' || cfg.seed === undefined || cfg.seed === null || !isFinite(seedVal) || seedVal < 0)
@@ -212,7 +215,8 @@
         totalIssued: totalIssued,
         totalWaiting: totalWaiting,
         issuedRate: totalRequests ? (totalIssued / totalRequests * 100) : 0,
-        usedSeed: seed
+        usedSeed: seed,
+        elapsedMs: Math.max(0, Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - t0))
       }
     };
   }
