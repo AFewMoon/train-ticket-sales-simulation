@@ -43,7 +43,7 @@
 
   /* ---------- 四类车次生成（均挂接线路，站序为线路子序列） ---------- */
 
-  var TYPE_FULL = 'full', TYPE_SECTION = 'section', TYPE_EXPRESS = 'express', TYPE_SKIP = 'skip';
+  var TYPE_DIRECT = 'direct', TYPE_EXPRESS = 'express', TYPE_SKIP = 'skip';
 
   function typeOfTrain(train) {
     if (train.simType) return train.simType;
@@ -54,13 +54,11 @@
     var seq = line.stationSeq, majors = line.majorNos || [];
     var n = seq.length;
     var stops = [];
-    if (type === TYPE_FULL) {
-      stops = seq.slice();
-    } else if (type === TYPE_SECTION) {
-      // 区间直达：随机连续切片，且倾向覆盖较大区段
-      var start = randInt(rng, 0, Math.max(n - 2, 0));
-      var end = randInt(rng, start + 1, n - 1);
-      stops = seq.slice(start, end + 1);
+    if (type === TYPE_DIRECT) {
+      // 两点直达：仅起终点两站，中间不停靠
+      var i = randInt(rng, 0, n - 2);
+      var j = randInt(rng, i + 1, n - 1);
+      stops = [seq[i], seq[j]];
     } else if (type === TYPE_EXPRESS) {
       // 大站快车：首站 + 末站 + 线路标记的大站；不足 3 个停靠时退化为每第 3 站
       stops = seq.filter(function (no) { return no === seq[0] || no === seq[n - 1] || majors.indexOf(no) !== -1; });
@@ -79,20 +77,18 @@
     return stops;
   }
 
-  /** 各类型车次字头：全程车/区间直达/大站快车 G、隔站停车 D */
-  var TYPE_PREFIX = { full: 'G', section: 'G', express: 'G', skip: 'D' };
+  /** 各类型车次字头：直达车与大站快车 G、隔站停车 D */
+  var TYPE_PREFIX = { direct: 'G', express: 'G', skip: 'D' };
 
   var TYPE_META = {
-    full: { label: '全程车', badge: 'badge-type-full' },
-    section: { label: '区间直达', badge: 'badge-type-section' },
+    direct: { label: '直达车', badge: 'badge-type-direct' },
     express: { label: '大站快车', badge: 'badge-type-express' },
     skip: { label: '隔站停车', badge: 'badge-type-skip' }
   };
 
   function generateTrains(line, cfg, rng) {
     var plan = [
-      [TYPE_FULL, cfg.countFull],
-      [TYPE_SECTION, cfg.countSection],
+      [TYPE_DIRECT, cfg.countDirect],
       [TYPE_EXPRESS, cfg.countExpress],
       [TYPE_SKIP, cfg.countSkip]
     ];
@@ -121,7 +117,7 @@
   /* ---------- 仿真主流程 ---------- */
 
   /**
-   * cfg = { lineId 或 autoStationCount, countFull, countSection, countExpress, countSkip,
+   * cfg = { lineId 或 autoStationCount, countDirect, countExpress, countSkip,
    *         seats, passengers, requests, seed }
    * 返回 { ok, msg?, summary }
    */

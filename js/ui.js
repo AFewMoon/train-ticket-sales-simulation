@@ -580,10 +580,13 @@
   /** 座位区间图：每行一个座位，彩色区间块按站点轴定位 */
   var SEG_COLORS = ['#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#7C3AED', '#0891B2', '#DB2777', '#65A30D'];
 
-  /** 生成单趟车次的座位图 HTML（订单与座位页与仿真结果页共用） */
+  /** 生成单趟车次的座位图 HTML（订单页与仿真结果页共用）；
+      站点多时内部轨道按站数展宽，外层容器左右滑动，避免站名文字重叠 */
   function renderTrainSeatMapHtml(train, issued) {
     var html = '';
     var S = train.stationSeq.length;
+    var innerMinWidth = Math.max(560, S * 72);
+    html += '<div class="seat-scroll"><div class="seat-inner" style="min-width:' + innerMinWidth + 'px;">';
     var line = train.lineId ? Domain.getLine(train.lineId) : null;
     var typeMeta = global.Simulation.TYPE_META[global.Simulation.typeOfTrain(train)];
 
@@ -622,6 +625,7 @@
       });
       html += '</div></div>';
     }
+    html += '</div></div>';
     return html;
   }
 
@@ -717,8 +721,7 @@
       var cfg = {
         lineId: $('#sim-line').value,
         autoStationCount: Number($('#sim-auto-stations').value) || 10,
-        countFull: $('#sim-count-full').value,
-        countSection: $('#sim-count-section').value,
+        countDirect: $('#sim-count-direct').value,
         countExpress: $('#sim-count-express').value,
         countSkip: $('#sim-count-skip').value,
         seats: $('#sim-seats').value,
@@ -746,6 +749,113 @@
       $('#sim-seatmap-card').hidden = true;
       toast('仿真数据已清理', 'success');
       renderAll();
+    });
+  }
+
+  /* ================= 数据查询区 ================= */
+
+  var queryState = { trainCode: '', segIdx: -1 };
+
+  function renderQueryArea() {
+    var trains = Domain.listTrains();
+    var tSel = $('#query-train'), sSel = $('#query-segment');
+    if (!trains.some(function (t) { return t.code === queryState.trainCode; })) {
+      queryState.trainCode = trains.length ? trains[0].code : '';
+      queryState.segIdx = -1;
+    }
+    tSel.innerHTML = trains.length
+      ? trains.map(function (t) { return '<option value="' + escapeHtml(t.code) + '">' + escapeHtml(t.code) + '</option>'; }).join('')
+      : '<option value="">无车次</option>';
+    tSel.value = queryState.trainCode;
+
+    var train = Domain.getTrain(queryState.trainCode);
+    if (train) {
+      var prevSeg = queryState.segIdx;
+      var opts = '<option value="-1">全部订单</option>';
+      for (var i = 0; i < train.stationSeq.length - 1; i++) {
+        var f = Domain.getStation(train.stationSeq[i]);
+        var t2 = Domain.getStation(train.stationSeq[i + 1]);
+        opts += '<option value="' + i + '">' + escapeHtml(f ? f.nameZh : i) + '—' + escapeHtml(t2 ? t2.nameZh : (i + 1)) + ' 段</option>';
+      }
+      sSel.innerHTML = opts;
+      sSel.value = String(prevSeg >= -1 && prevSeg < train.stationSeq.length - 1 ? prevSeg : -1);
+      sSel.disabled = false;
+    } else {
+      sSel.innerHTML = '<option value="-1">—</option>';
+      sSel.disabled = true;
+    }
+    renderQueryResult();
+  }
+
+  function renderQueryResult() {
+    var box = $('#query-result');
+    var train = Domain.getTrain(queryState.trainCode);
+    if (!train) {
+      box.innerHTML = emptyState('暂无车次数据');
+      return;
+    }
+    var all = Ticketing.ordersOfTrain(train.code)
+      .sort(function (a, b) { return a.createdAt - b.createdAt; });
+
+    if (queryState.segIdx < 0) {
+      // 该车次全部订单
+      if (!all.length) {
+        box.innerHTML = emptyState('该车次暂无订单');
+        return;
+      }
+      var rows = all.map(function (o) {
+        var p = Domain.getPassenger(o.passengerId);
+        var st = train.stationSeq;
+        var f = Domain.getStation(st[o.fromIdx]), t = Domain.getStation(st[o.toIdx]);
+        var status = o.status === 'issued'
+          ? '<span class="badge badge-issued">已出票</span>'
+          : '<span class="badge badge-waiting">候补中</span>';
+        return '<tr><td>' + escapeHtml(p ? p.name : '未知') + '</td>' +
+          '<td>' + escapeHtml(f ? f.nameZh : st[o.fromIdx]) + ' → ' + escapeHtml(t ? t.nameZh : st[o.toIdx]) + '</td>' +
+          '<td>' + status + '</td>' +
+          '<td>' + (o.seatNo !== undefined && o.seatNo !== null ? '第 ' + o.seatNo + ' 号' : '—') + '</td>' +
+          '<td>' + escapeHtml(p ? Domain.maskIdCard(p.idCard) : '—') + '</td></tr>';
+      }).join('');
+      box.innerHTML = '<table><thead><tr><th>乘车人</th><th>区间</th><th>状态</th><th>座位</th><th>证件号</th></tr></thead><tbody>' +
+        rows + '</tbody></table>';
+      return;
+    }
+
+    // 该相邻区间段上的乘客（已出票且旅程覆盖该段）
+    var seg = queryState.segIdx;
+    var onSeg = all.filter(function (o) {
+      return o.status === 'issued' && o.fromIdx <= seg && o.toIdx > seg;
+    });
+    var f = Domain.getStation(train.stationSeq[seg]);
+    var t = Domain.getStation(train.stationSeq[seg + 1]);
+    var title = escapeHtml(f ? f.nameZh : seg) + ' — ' + escapeHtml(t ? t.nameZh : (seg + 1)) + ' 段';
+    if (!onSeg.length) {
+      box.innerHTML = emptyState(title + '：本段暂无已出票乘客');
+      return;
+    }
+    var rows2 = onSeg.map(function (o) {
+      var p = Domain.getPassenger(o.passengerId);
+      var st = train.stationSeq;
+      var jf = Domain.getStation(st[o.fromIdx]), jt = Domain.getStation(st[o.toIdx]);
+      return '<tr><td>' + escapeHtml(p ? p.name : '未知') + '</td>' +
+        '<td><code>' + escapeHtml(p ? Domain.maskIdCard(p.idCard) : '—') + '</code></td>' +
+        '<td>' + escapeHtml(jf ? jf.nameZh : st[o.fromIdx]) + ' → ' + escapeHtml(jt ? jt.nameZh : st[o.toIdx]) + '</td>' +
+        '<td>第 ' + o.seatNo + ' 号座位</td></tr>';
+    }).join('');
+    box.innerHTML = '<p class="hint" style="margin: 4px 0 8px;">' + title + '：共 ' + onSeg.length + ' 名乘客</p>' +
+      '<table><thead><tr><th>乘客</th><th>证件号</th><th>完整旅程</th><th>座位</th></tr></thead><tbody>' +
+      rows2 + '</tbody></table>';
+  }
+
+  function bindQueryControls() {
+    $('#query-train').addEventListener('change', function () {
+      queryState.trainCode = this.value;
+      queryState.segIdx = -1;
+      renderQueryArea();
+    });
+    $('#query-segment').addEventListener('change', function () {
+      queryState.segIdx = Number(this.value);
+      renderQueryResult();
     });
   }
 
@@ -828,6 +938,7 @@
     renderTrains();
     renderBooking();
     renderOrders();
+    renderQueryArea();
     renderSeatMap();
     refreshSimLineSelect();
     renderSimResults();
@@ -850,6 +961,7 @@
       bindTrainDelete();
       bindBookingForm();
       bindOrderRefund();
+      bindQueryControls();
       bindAutoScan();
       bindSimForm();
     },

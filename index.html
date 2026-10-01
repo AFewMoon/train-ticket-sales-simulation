@@ -237,6 +237,16 @@
     <section class="panel" id="panel-orders" role="tabpanel" hidden>
       <div class="card">
         <div class="list-head">
+          <h2 class="card-title">数据查询</h2>
+          <div class="row-gap" style="flex: 1; justify-content: flex-end; align-items: center;">
+            <select id="query-train" style="width: auto;"></select>
+            <select id="query-segment" style="width: auto;"></select>
+          </div>
+        </div>
+        <div class="table-wrap" id="query-result" style="max-height: 320px; overflow-y: auto;"></div>
+      </div>
+      <div class="card">
+        <div class="list-head">
           <h2 class="card-title">订单列表</h2>
           <span class="badge badge-count" id="order-count">0 单</span>
         </div>
@@ -245,7 +255,7 @@
       <div class="card" style="margin-top: 20px;">
         <div class="list-head">
           <h2 class="card-title">座位区间图</h2>
-          <p class="hint" style="margin: 0;">同一座位上的票段严格首尾相接、恰好覆盖列车全程</p>
+          <p class="hint" style="margin: 0;">展示每个座位的票段分布，空洞为可售区间；站点较多时可左右滑动</p>
         </div>
         <div id="seat-map" class="seat-map"></div>
       </div>
@@ -270,12 +280,8 @@
               <label>车次数量（按类型）</label>
               <div class="sim-type-grid">
                 <div class="sim-type-item">
-                  <span class="badge badge-type-full">全程车</span>
-                  <input type="number" id="sim-count-full" min="0" max="10" value="2" />
-                </div>
-                <div class="sim-type-item">
-                  <span class="badge badge-type-section">区间直达</span>
-                  <input type="number" id="sim-count-section" min="0" max="10" value="2" />
+                  <span class="badge badge-type-direct">直达车</span>
+                  <input type="number" id="sim-count-direct" min="0" max="10" value="2" />
                 </div>
                 <div class="sim-type-item">
                   <span class="badge badge-type-express">大站快车</span>
@@ -286,6 +292,7 @@
                   <input type="number" id="sim-count-skip" min="0" max="10" value="2" />
                 </div>
               </div>
+              <p class="hint">直达车 / 大站快车为 G 字头，隔站停车为 D 字头</p>
             </div>
             <div class="field two-col">
               <div>

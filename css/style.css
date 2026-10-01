@@ -199,8 +199,7 @@ input.is-invalid { border-color: var(--red); }
 .badge-code-k { background: var(--green-bg); color: var(--green); }
 
 /* 车次类型徽章（仿真） */
-.badge-type-full { background: var(--primary-100); color: var(--primary-700); }
-.badge-type-section { background: var(--green-bg); color: var(--green); }
+.badge-type-direct { background: var(--primary-100); color: var(--primary-700); }
 .badge-type-express { background: var(--amber-bg); color: #B45309; }
 .badge-type-skip { background: #EDE9FE; color: #6D28D9; }
 .badge-major { background: var(--amber-bg); color: #B45309; }
@@ -321,6 +320,9 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 
 /* ============ 座位区间图 ============ */
 .seat-map { display: flex; flex-direction: column; gap: 14px; }
+
+.seat-scroll { overflow-x: auto; padding-bottom: 4px; }
+.seat-inner { min-width: 100%; }
 
 .seat-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 12px; }
 .seat-label {
