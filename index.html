@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>火车票销售模拟</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="4" y="3" width="16" height="13" rx="3" fill="currentColor"/>
+          <rect x="7" y="6" width="4" height="3.5" rx="1" fill="#fff"/>
+          <rect x="13" y="6" width="4" height="3.5" rx="1" fill="#fff"/>
+          <circle cx="8.5" cy="13" r="1.4" fill="#fff"/>
+          <circle cx="15.5" cy="13" r="1.4" fill="#fff"/>
+          <path d="M7 17.5 5 21M17 17.5 19 21M6 19h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        <h1 class="brand-title">火车票销售模拟</h1>
+      </div>
+      <nav class="tabs" role="tablist" aria-label="功能模块">
+        <button class="tab-btn is-active" data-tab="stations" role="tab" aria-selected="true">车站</button>
+        <button class="tab-btn" data-tab="passengers" role="tab" aria-selected="false">乘车人</button>
+        <button class="tab-btn" data-tab="trains" role="tab" aria-selected="false">车次</button>
+        <button class="tab-btn" data-tab="booking" role="tab" aria-selected="false">购票</button>
+        <button class="tab-btn" data-tab="orders" role="tab" aria-selected="false">订单与座位</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="page">
+    <!-- 车站面板 -->
+    <section class="panel is-active" id="panel-stations" role="tabpanel">
+      <div class="panel-grid">
+        <div class="card form-card">
+          <h2 class="card-title">登记车站</h2>
+          <form id="station-form" autocomplete="off">
+            <div class="field">
+              <label for="station-no">车站号码</label>
+              <input type="text" id="station-no" readonly placeholder="提交时自动分配" />
+              <p class="hint">系统将随机分配全局唯一的 3 位号码</p>
+            </div>
+            <div class="field">
+              <label for="station-name-zh">中文名 <span class="req">*</span></label>
+              <input type="text" id="station-name-zh" placeholder="如：北京南" maxlength="20" required />
+            </div>
+            <div class="field">
+              <label for="station-name-en">英文名 <span class="req">*</span></label>
+              <input type="text" id="station-name-en" placeholder="如：Beijingnan" maxlength="40" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">登记车站</button>
+          </form>
+        </div>
+        <div class="card list-card">
+          <div class="list-head">
+            <h2 class="card-title">车站列表</h2>
+            <span class="badge badge-count" id="station-count">0 座</span>
+          </div>
+          <div class="table-wrap" id="station-table-wrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 乘车人面板 -->
+    <section class="panel" id="panel-passengers" role="tabpanel" hidden>
+      <div class="panel-grid">
+        <div class="card form-card">
+          <h2 class="card-title">登记乘车人</h2>
+          <form id="passenger-form" autocomplete="off">
+            <div class="field">
+              <label for="passenger-name">姓名 <span class="req">*</span></label>
+              <input type="text" id="passenger-name" placeholder="如：张三" maxlength="20" required />
+            </div>
+            <div class="field">
+              <label for="passenger-idcard">身份证号 <span class="req">*</span></label>
+              <input type="text" id="passenger-idcard" placeholder="18 位（末位可为 X）" maxlength="18" required />
+              <p class="hint" id="idcard-hint">17 位数字 + 校验位（数字或 X）</p>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">登记乘车人</button>
+          </form>
+        </div>
+        <div class="card list-card">
+          <div class="list-head">
+            <h2 class="card-title">乘车人列表</h2>
+            <span class="badge badge-count" id="passenger-count">0 人</span>
+          </div>
+          <div class="table-wrap" id="passenger-table-wrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 车次面板 -->
+    <section class="panel" id="panel-trains" role="tabpanel" hidden>
+      <div class="panel-grid">
+        <div class="card form-card">
+          <h2 class="card-title">登记车次</h2>
+          <form id="train-form" autocomplete="off">
+            <div class="field">
+              <label for="train-code">车次号</label>
+              <input type="text" id="train-code" readonly />
+              <p class="hint">系统随机生成唯一车次号</p>
+            </div>
+            <div class="field">
+              <label for="train-station-select">选择途经车站 <span class="req">*</span></label>
+              <div class="row-gap">
+                <select id="train-station-select"></select>
+                <button type="button" class="btn btn-ghost" id="add-train-station">加入站序</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>已选站序（起点 → 终点）</label>
+              <div class="station-chain" id="train-station-chain">
+                <span class="hint">尚未选择车站，请先在「车站」页登记</span>
+              </div>
+            </div>
+            <div class="field">
+              <label for="train-seat-count">座位数</label>
+              <div class="stepper">
+                <button type="button" class="stepper-btn" id="seat-minus" aria-label="减少">−</button>
+                <input type="number" id="train-seat-count" min="1" max="50" value="5" />
+                <button type="button" class="stepper-btn" id="seat-plus" aria-label="增加">＋</button>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">登记车次</button>
+          </form>
+        </div>
+        <div class="card list-card">
+          <div class="list-head">
+            <h2 class="card-title">车次列表</h2>
+            <span class="badge badge-count" id="train-count">0 列</span>
+          </div>
+          <div class="table-wrap" id="train-table-wrap"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 购票面板 -->
+    <section class="panel" id="panel-booking" role="tabpanel" hidden>
+      <div class="panel-grid">
+        <div class="card form-card">
+          <h2 class="card-title">购票下单</h2>
+          <form id="booking-form" autocomplete="off">
+            <div class="field">
+              <label for="booking-passenger">乘车人 <span class="req">*</span></label>
+              <select id="booking-passenger" required></select>
+            </div>
+            <div class="field">
+              <label for="booking-train">车次 <span class="req">*</span></label>
+              <select id="booking-train" required></select>
+              <p class="hint" id="booking-capacity">请选择车次</p>
+            </div>
+            <div class="field two-col">
+              <div>
+                <label for="booking-from">起点站 <span class="req">*</span></label>
+                <select id="booking-from" required></select>
+              </div>
+              <div>
+                <label for="booking-to">终点站 <span class="req">*</span></label>
+                <select id="booking-to" required></select>
+              </div>
+            </div>
+            <p class="hint">仅可选择该车次站序中起点在终点之前的合法区间</p>
+            <button type="submit" class="btn btn-primary btn-block">提交购票请求</button>
+          </form>
+        </div>
+        <div class="card list-card">
+          <div class="list-head">
+            <h2 class="card-title">候补队列</h2>
+          </div>
+          <div id="waiting-list" class="waiting-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 订单与座位面板 -->
+    <section class="panel" id="panel-orders" role="tabpanel" hidden>
+      <div class="card">
+        <div class="list-head">
+          <h2 class="card-title">订单列表</h2>
+          <span class="badge badge-count" id="order-count">0 单</span>
+        </div>
+        <div class="table-wrap" id="order-table-wrap"></div>
+      </div>
+      <div class="card" style="margin-top: 20px;">
+        <div class="list-head">
+          <h2 class="card-title">座位区间图</h2>
+          <p class="hint" style="margin: 0;">同一座位上的票段严格首尾相接、恰好覆盖列车全程</p>
+        </div>
+        <div id="seat-map" class="seat-map"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-box" class="toast-box" aria-live="polite"></div>
+
+  <script src="js/storage.js"></script>
+  <script src="js/domain.js"></script>
+  <script src="js/ticketing.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# 项目内部数据（规则约定为项目数据，非临时缓存，不纳入版本库）
+.codebuddy/
+
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.tmp
+
+# 依赖与构建产物（本项目为纯静态，无需）
+node_modules/
+dist/
