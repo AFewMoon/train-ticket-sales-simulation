@@ -7,7 +7,7 @@
   var Domain = global.Domain;
   var Storage = global.Storage;
 
-  var SEED_VERSION = '6';
+  var SEED_VERSION = '7';
 
   /* major: true → 大站；未标记者为小站 */
   var BUILTIN_LINES = [
@@ -82,6 +82,9 @@
         { n: '清远', e: 'Qingyuan' },
         { n: '广州北', e: 'Guangzhoubei' },
         { n: '广州南', e: 'Guangzhounan', major: true },
+        { n: '南沙北', e: 'Nanshabei' },
+        { n: '虎门', e: 'Humen' },
+        { n: '光明城', e: 'Guangmingcheng' },
         { n: '深圳北', e: 'Shenzhenbei', major: true },
         { n: '福田', e: 'Futian' },
         { n: '香港西九龙', e: 'Xianggangxijiulong', major: true }
@@ -117,8 +120,7 @@
         { n: '德惠西', e: 'Dehuixi' },
         { n: '扶余北', e: 'Fuyubei' },
         { n: '双城北', e: 'Shuangchengbei' },
-        { n: '哈尔滨西', e: 'Haerbinxi', major: true },
-        { n: '哈尔滨', e: 'Haerbin', major: true }
+        { n: '哈尔滨西', e: 'Haerbinxi', major: true }
       ]
     },
     {
