@@ -45,7 +45,7 @@ html, body {
 }
 
 .topbar-inner {
-  max-width: 1200px;
+  max-width: 100%;
   margin: 0 auto;
   padding: 14px 24px;
   display: flex;
@@ -81,7 +81,7 @@ html, body {
 }
 
 /* ============ 页面布局 ============ */
-.page { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; }
+.page { max-width: 100%; margin: 0 auto; padding: 28px 24px 64px; }
 
 .panel { animation: fadeIn .22s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

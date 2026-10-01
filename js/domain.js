@@ -27,10 +27,11 @@
 
   function saveSeq() { global.Storage.write(K.seq, seq); }
 
-  /** 随机取一个未被占用且不在排除集合中的元素；用尽返回 null */
+  /** 随机取一个未被占用且不在排除集合中的元素；用尽返回 null。
+      takenSet 以字符串存储（站号为 pad3 字符串），查询时统一转字符串，避免数字/字符串类型不匹配 */
   function randomPick(total, takenSet) {
     var pool = [];
-    for (var i = 0; i < total; i++) if (!takenSet.has(i)) pool.push(i);
+    for (var i = 0; i < total; i++) if (!takenSet.has(String(i))) pool.push(i);
     if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)];
   }
@@ -48,14 +49,44 @@
     return no;
   }
 
-  /** 随机生成唯一车次号：G/D/K 前缀 + 3~4 位数字 */
-  function allocateTrainCode() {
+  /** 为车站重新分配一个不与现有任何车站/号码池冲突的新号码（数据修复迁移用） */
+  function reassignStationNo(station) {
+    var no = allocateStationNo();
+    if (no === null) return false;
+    var oldNo = station.no;
+    var stations = listStations();
+    var s = stations.find(function (x) { return x.no === oldNo && x.nameZh === station.nameZh; });
+    if (!s) return false;
+    s.no = no;
+    if (!global.Storage.write(K.stations, stations)) return false;
+    // 同步所有引用旧号码的站序（车次/线路）
+    var trains = listTrains();
+    var trainsChanged = false;
+    trains.forEach(function (t) {
+      t.stationSeq = t.stationSeq.map(function (x) { if (x === oldNo) { trainsChanged = true; return no; } return x; });
+    });
+    if (trainsChanged) global.Storage.write(K.trains, trains);
+    var lines = listLines();
+    var linesChanged = false;
+    lines.forEach(function (l) {
+      l.stationSeq = l.stationSeq.map(function (x) { if (x === oldNo) { linesChanged = true; return no; } return x; });
+      l.majorNos = (l.majorNos || []).map(function (x) { if (x === oldNo) { linesChanged = true; return no; } return x; });
+    });
+    if (linesChanged) global.Storage.write(K.lines, lines);
+    return true;
+  }
+
+  /**
+   * 随机生成唯一车次号：字头 + 3~4 位数字。
+   * prefix 可选（'G' | 'D' | 'K'）：指定时只使用该字头；缺省时随机三选一（手动登记场景）。
+   */
+  function allocateTrainCode(prefix) {
     var used = new Set();
     listTrains().forEach(function (t) { used.add(t.code); });
     seq.trainCodes.forEach(function (c) { used.add(c); });
-    var prefixes = ['G', 'D', 'K'];
+    var prefixes = (prefix && /^[GDK]$/.test(prefix)) ? [prefix] : ['G', 'D', 'K'];
     for (var attempt = 0; attempt < 5000; attempt++) {
-      var p = prefixes[Math.floor(Math.random() * 3)];
+      var p = prefixes[Math.floor(Math.random() * prefixes.length)];
       var num = 100 + Math.floor(Math.random() * 9900); // 100-9999
       var code = p + num;
       if (!used.has(code)) {
@@ -241,7 +272,7 @@
 
   /* ---------- 车次 ---------- */
 
-  function addTrain(stationSeq, seatCount, lineId) {
+  function addTrain(stationSeq, seatCount, lineId, codePrefix) {
     if (!Array.isArray(stationSeq) || stationSeq.length < 2) {
       return { ok: false, msg: '车次至少需要 2 个途经车站' };
     }
@@ -263,7 +294,7 @@
       }
       train.lineId = lineId;
     }
-    var code = allocateTrainCode();
+    var code = allocateTrainCode(codePrefix);
     if (code === null) return { ok: false, msg: '车次号生成失败' };
     train.code = code;
     var trains = listTrains();
@@ -304,6 +335,7 @@
     addStation: addStation,
     removeStation: removeStation,
     getStation: getStation,
+    reassignStationNo: reassignStationNo,
     stationUsedByTrain: stationUsedByTrain,
     addLine: addLine,
     removeLine: removeLine,

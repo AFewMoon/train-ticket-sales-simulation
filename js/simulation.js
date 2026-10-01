@@ -68,12 +68,19 @@
         stops = seq.filter(function (no, i) { return i % 3 === 0 || i === n - 1; });
       }
     } else if (type === TYPE_SKIP) {
-      // 隔站停车：偶数下标站（含首末站语义上的奇偶对齐）
-      stops = seq.filter(function (no, i) { return i % 2 === 0; });
-      if (stops[stops.length - 1] !== seq[n - 1] && n >= 2) stops.push(seq[n - 1]);
+      // 隔站停车（泛指）：相邻两个停靠站之间随机隔 1~3 站，末站必停
+      var i = 0;
+      stops.push(seq[0]);
+      while (i < n - 1) {
+        i = Math.min(n - 1, i + 1 + randInt(rng, 1, 3));
+        stops.push(seq[i]);
+      }
     }
     return stops;
   }
+
+  /** 各类型车次字头：全程车 K（普速全线停靠）、区间直达与大站快车 G、隔站停车 D */
+  var TYPE_PREFIX = { full: 'K', section: 'G', express: 'G', skip: 'D' };
 
   var TYPE_META = {
     full: { label: '全程车', badge: 'badge-type-full' },
@@ -95,7 +102,7 @@
       for (var i = 0; i < count; i++) {
         var stops = pickStops(rng, line, type);
         if (!stops || stops.length < 2) continue;
-        var res = Domain.addTrain(stops, cfg.seats, line.id);
+        var res = Domain.addTrain(stops, cfg.seats, line.id, TYPE_PREFIX[type]);
         if (!res.ok) continue;
         // 为仿真车次补充类型标记（直接改写并持久化）
         var trains = Domain.listTrains();
@@ -252,6 +259,7 @@
     runSimulation: runSimulation,
     cleanupSimulation: cleanupSimulation,
     TYPE_META: TYPE_META,
+    TYPE_PREFIX: TYPE_PREFIX,
     typeOfTrain: typeOfTrain,
     makeRng: makeRng
   };
