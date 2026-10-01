@@ -1,5 +1,5 @@
-/* 仿真引擎：基于一条线路自动生成四类车次（全程车/区间直达/大站快车/隔站停车）、
-   批量乘车人与购票请求，复用 Ticketing.purchase（DAG-BFS 出票）跑完整流程，并汇总统计。
+/* 仿真引擎：基于一条线路自动生成三类车次（直达车/大站快车/隔站停车）、
+   批量购票请求复用 Ticketing.purchase（逐单区间适配出票）跑完整流程，并汇总统计。
    纯逻辑无 DOM；所有仿真实体带 sim: true 标记，便于一键清理。 */
 (function (global) {
   'use strict';
@@ -23,23 +23,7 @@
     return min + Math.floor(rng() * (max - min + 1));
   }
 
-  var SURNAMES = '王李张刘陈杨赵黄周吴徐孙马朱胡郭何高林郑谢罗宋唐韩冯于董萧程曹袁邓许傅沈曾彭吕'.split('');
-  var GIVEN = '伟芳娜秀英敏静丽强磊军洋勇艳杰娟涛明超霞平刚桂英华建文军鑫宇欣怡睿泽梓涵子轩'.split('');
-  var ID_REGIONS = ['110101', '310104', '440305', '320102', '510107', '420106', '330102', '610113'];
 
-  function genPassengerName(rng) {
-    return SURNAMES[randInt(rng, 0, SURNAMES.length - 1)] +
-      GIVEN[randInt(rng, 0, GIVEN.length - 1)];
-  }
-
-  function genIdCard(rng) {
-    var region = ID_REGIONS[randInt(rng, 0, ID_REGIONS.length - 1)];
-    var year = randInt(rng, 1960, 2005);
-    var month = String(randInt(rng, 1, 12)).padStart(2, '0');
-    var day = String(randInt(rng, 1, 28)).padStart(2, '0');
-    var seq = String(randInt(rng, 0, 999)).padStart(3, '0');
-    return Domain.makeValidIdCard(region + year + month + day + seq);
-  }
 
   /* ---------- 四类车次生成（均挂接线路，站序为线路子序列） ---------- */
 
@@ -129,7 +113,7 @@
 
   /**
    * cfg = { lineId 或 autoStationCount, countDirect, countExpress, countSkip,
-   *         seats, passengers, requests, seed }
+   *         seats, requests, seed }
    * 返回 { ok, msg?, summary }
    */
   function runSimulation(cfg) {
@@ -163,26 +147,15 @@
 
     var rng = makeRng(seed);
 
-    // 2. 生成 sim 乘车人（合法身份证）
-    var passengers = [];
-    var pCount = Math.max(1, Math.floor(Number(cfg.passengers) || 10));
-    for (var p = 0; p < pCount; p++) {
-      var pr = Domain.addPassenger(genPassengerName(rng), genIdCard(rng));
-      if (pr.ok) { pr.passenger.sim = true; passengers.push(pr.passenger); }
-      // 重名/重号冲突时跳过（身份证由随机区号+日期构成，冲突概率低）
-    }
-    // 回写 sim 标记
-    var plist = Domain.listPassengers();
-    var simIds = {};
-    passengers.forEach(function (x) { simIds[x.id] = true; });
-    plist.forEach(function (x) { if (simIds[x.id]) x.sim = true; });
-    global.Storage.write(global.Storage.KEYS.passengers, plist);
+    // 批量事务：批次内 orders/queues/events 全部走内存缓存，结束时一次性落盘
+    Ticketing.beginBatch();
+    try {
 
-    // 3. 生成车次
+    // 2. 生成车次
     var trains = generateTrains(line, cfg, rng);
     if (!trains.length) return { ok: false, msg: '未能生成任何车次，请检查各类车次数参数' };
 
-    // 4. 编排购票请求：每车次 requests 条，随机乘车人 + 合法区间
+    // 3. 编排购票请求：每车次 requests 条，随机合法区间
     var reqCount = Math.max(1, Math.floor(Number(cfg.requests) || 10));
     var events = [];
     var simOrderIds = {};
@@ -196,29 +169,31 @@
       for (var r = 0; r < reqCount; r++) {
         var fromIdx = randInt(rng, 0, n - 2);
         var toIdx = randInt(rng, fromIdx + 1, n - 1);
-        var passenger = passengers[randInt(rng, 0, passengers.length - 1)];
-        if (!passenger) break;
-        var res = Ticketing.purchase(t.code, passenger.id, fromIdx, toIdx);
+        var res = Ticketing.purchase(t.code, fromIdx, toIdx);
         var stat = perTrain[t.code];
         stat.requests++;
         if (res.ok && res.issued) stat.issued++;
         else if (res.ok) stat.waiting++;
         if (res.ok && res.order) simOrderIds[res.order.id] = true;
         events.push({
-          trainCode: t.code, passenger: passenger.name,
+          trainCode: t.code,
           fromIdx: fromIdx, toIdx: toIdx,
           issued: !!(res.ok && res.issued), seatNo: res.seatNo, position: res.position
         });
       }
     });
 
-    // 为本次仿真的订单统一打 sim 标记（一次写回）
+    } finally {
+      Ticketing.endBatch();
+    }
+
+    // 批次落盘后，为本次仿真的订单统一打 sim 标记（一次写回）
     var orderList = Domain.listOrders();
     var marked = false;
     orderList.forEach(function (o) { if (simOrderIds[o.id]) { o.sim = true; marked = true; } });
     if (marked) global.Storage.write(global.Storage.KEYS.orders, orderList);
 
-    // 5. 汇总
+    // 4. 汇总
     var totalRequests = 0, totalIssued = 0, totalWaiting = 0;
     Object.keys(perTrain).forEach(function (code) {
       totalRequests += perTrain[code].requests;
@@ -252,10 +227,7 @@
     // 2) 删 sim 车次（此时已无订单引用）
     var trains = Domain.listTrains().filter(function (t) { return !t.sim; });
     Storage.write(Storage.KEYS.trains, trains);
-    // 3) 删 sim 乘车人（此时已无订单引用）
-    var passengers = Domain.listPassengers().filter(function (p) { return !p.sim; });
-    Storage.write(Storage.KEYS.passengers, passengers);
-    // 4) 删 sim 线路（此时已无车次挂接）与 sim 车站（站序无引用）
+    // 3) 删 sim 线路（此时已无车次挂接）与 sim 车站（站序无引用）
     var lines = Domain.listLines().filter(function (l) { return !l.sim; });
     Storage.write(Storage.KEYS.lines, lines);
     var removedNos = {};

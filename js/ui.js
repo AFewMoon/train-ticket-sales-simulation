@@ -207,57 +207,6 @@
     });
   }
 
-  /* ================= 乘车人面板 ================= */
-
-  function renderPassengers() {
-    var passengers = Domain.listPassengers();
-    $('#passenger-count').textContent = passengers.length + ' 人';
-    var wrap = $('#passenger-table-wrap');
-    if (!passengers.length) {
-      wrap.innerHTML = emptyState('暂无乘车人，请在左侧登记');
-      return;
-    }
-    var rows = passengers.map(function (p) {
-      return '<tr><td>' + escapeHtml(p.name) + '</td><td><code>' + escapeHtml(Domain.maskIdCard(p.idCard)) +
-        '</code></td><td><button class="btn btn-danger" data-del-passenger="' + escapeHtml(p.id) + '">删除</button></td></tr>';
-    }).join('');
-    wrap.innerHTML = '<table><thead><tr><th>姓名</th><th>身份证号</th><th>操作</th></tr></thead><tbody>' +
-      rows + '</tbody></table>';
-  }
-
-  function bindPassengerForm() {
-    var input = $('#passenger-idcard');
-    input.addEventListener('input', function () {
-      var v = input.value.trim().toUpperCase();
-      if (!v) { input.classList.remove('is-valid', 'is-invalid'); return; }
-      input.classList.toggle('is-valid', Domain.isValidIdCard(v));
-      input.classList.toggle('is-invalid', !Domain.isValidIdCard(v));
-    });
-    $('#passenger-form').addEventListener('submit', function (e) {
-      e.preventDefault();
-      var res = Domain.addPassenger($('#passenger-name').value, input.value);
-      if (!res.ok) { toast(res.msg, 'error'); return; }
-      toast('乘车人登记成功：' + res.passenger.name, 'success');
-      $('#passenger-name').value = '';
-      input.value = '';
-      input.classList.remove('is-valid', 'is-invalid');
-      renderAll();
-    });
-  }
-
-  function bindPassengerDelete() {
-    $('#passenger-table-wrap').addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-del-passenger]');
-      if (!btn) return;
-      var id = btn.getAttribute('data-del-passenger');
-      var p = Domain.getPassenger(id);
-      if (!confirmAction('确认删除乘车人「' + (p ? p.name : id) + '」？')) return;
-      var res = Domain.removePassenger(id);
-      toast(res.ok ? '乘车人已删除' : res.msg, res.ok ? 'success' : 'error');
-      renderAll();
-    });
-  }
-
   /* ================= 车次面板 ================= */
 
   function renderTrainDraft() {
@@ -406,15 +355,6 @@
   /* ================= 购票面板 ================= */
 
   function renderBooking() {
-    // 乘车人下拉
-    var pSel = $('#booking-passenger');
-    var passengers = Domain.listPassengers();
-    var prevP = pSel.value;
-    pSel.innerHTML = passengers.length
-      ? passengers.map(function (p) { return '<option value="' + escapeHtml(p.id) + '">' + escapeHtml(p.name) + '</option>'; }).join('')
-      : '<option value="">请先登记乘车人</option>';
-    if (prevP && passengers.some(function (p) { return p.id === prevP; })) pSel.value = prevP;
-
     // 车次下拉
     var tSel = $('#booking-train');
     var trains = Domain.listTrains();
@@ -492,13 +432,11 @@
     var html = waiting.map(function (o) {
       counters[o.trainCode] = (counters[o.trainCode] || 0) + 1;
       var train = Domain.getTrain(o.trainCode);
-      var p = Domain.getPassenger(o.passengerId);
       var st = train ? train.stationSeq : [];
       var fs = st[o.fromIdx], ts = st[o.toIdx];
       var f = Domain.getStation(fs), t = Domain.getStation(ts);
       return '<div class="waiting-item"><span>' + escapeHtml(o.trainCode) + ' · ' +
-        escapeHtml(p ? p.name : '未知') + ' · ' +
-        escapeHtml(f ? f.nameZh : fs) + ' → ' + escapeHtml(t ? t.nameZh : ts) +
+        escapeHtml(f ? f.nameZh : (fs || '未知站')) + ' → ' + escapeHtml(t ? t.nameZh : (ts || '未知站')) +
         '</span><span class="pos">候补第 ' + counters[o.trainCode] + ' 位</span></div>';
     }).join('');
     box.innerHTML = html;
@@ -513,17 +451,15 @@
 
     $('#booking-form').addEventListener('submit', function (e) {
       e.preventDefault();
-      var pid = $('#booking-passenger').value;
       var code = $('#booking-train').value;
       var fromIdx = Number($('#booking-from').value);
       var toIdx = Number($('#booking-to').value);
-      if (!pid) { toast('请先登记乘车人', 'error'); return; }
       if (!code) { toast('请先登记车次', 'error'); return; }
       if (isNaN(fromIdx) || isNaN(toIdx) || !Domain.isValidRange(fromIdx, toIdx)) {
         toast('请选择合法乘车区间', 'error');
         return;
       }
-      var res = Ticketing.purchase(code, pid, fromIdx, toIdx);
+      var res = Ticketing.purchase(code, fromIdx, toIdx);
       if (!res.ok) { toast(res.msg, 'error'); return; }
       if (res.issued) {
         toast('出票成功！座位号：' + res.seatNo, 'success');
@@ -547,7 +483,6 @@
     }
     var rows = orders.map(function (o) {
       var train = Domain.getTrain(o.trainCode);
-      var p = Domain.getPassenger(o.passengerId);
       var st = train ? train.stationSeq : [];
       var f = Domain.getStation(st[o.fromIdx]), t = Domain.getStation(st[o.toIdx]);
       var status = o.status === 'issued'
@@ -555,12 +490,12 @@
         : '<span class="badge badge-waiting">候补中</span>';
       var op = '<button class="btn btn-danger" data-refund-order="' + escapeHtml(o.id) + '">' +
         (o.status === 'issued' ? '退票' : '取消候补') + '</button>';
-      return '<tr><td>' + escapeHtml(o.trainCode) + '</td><td>' + escapeHtml(p ? p.name : '未知') +
-        '</td><td>' + escapeHtml(f ? f.nameZh : st[o.fromIdx]) + ' → ' + escapeHtml(t ? t.nameZh : st[o.toIdx]) +
+      return '<tr><td>' + escapeHtml(o.trainCode) +
+        '</td><td>' + escapeHtml(f ? f.nameZh : (st[o.fromIdx] || '未知站')) + ' → ' + escapeHtml(t ? t.nameZh : (st[o.toIdx] || '未知站')) +
         '</td><td>' + status + '</td><td>' + (o.seatNo !== undefined && o.seatNo !== null ? '第 ' + o.seatNo + ' 号座位' : '—') +
         '</td><td>' + op + '</td></tr>';
     }).join('');
-    wrap.innerHTML = '<table><thead><tr><th>车次</th><th>乘车人</th><th>区间</th><th>状态</th><th>座位</th><th>操作</th></tr></thead><tbody>' +
+    wrap.innerHTML = '<table><thead><tr><th>车次</th><th>区间</th><th>状态</th><th>座位</th><th>操作</th></tr></thead><tbody>' +
       rows + '</tbody></table>';
   }
 
@@ -633,23 +568,29 @@
       (line ? ' <span class="badge badge-count">' + escapeHtml(line.name) + '</span>' : '') +
       '</div>';
 
-    for (var seat = 1; seat <= train.seatCount; seat++) {
+    // 只渲染已占用座位（座位数上限 INT_MAX，不可按 1..N 枚举）；空洞即未售区间
+    var seatNos = [];
+    issued.forEach(function (o) {
+      if (o.seatNo !== undefined && o.seatNo !== null && seatNos.indexOf(o.seatNo) === -1) seatNos.push(o.seatNo);
+    });
+    seatNos.sort(function (a, b) { return a - b; });
+
+    seatNos.forEach(function (seat) {
       var segs = issued.filter(function (o) { return o.seatNo === seat; })
         .sort(function (a, b) { return a.fromIdx - b.fromIdx; });
       html += '<div class="seat-row"><div class="seat-label">座位 ' + seat + '</div><div class="seat-track">';
       segs.forEach(function (o, idx) {
         var left = (o.fromIdx / (S - 1)) * 100;
         var width = ((o.toIdx - o.fromIdx) / (S - 1)) * 100;
-        var p = Domain.getPassenger(o.passengerId);
         var f = Domain.getStation(train.stationSeq[o.fromIdx]);
         var t = Domain.getStation(train.stationSeq[o.toIdx]);
         var color = SEG_COLORS[(o.id.charCodeAt(o.id.length - 1) + idx) % SEG_COLORS.length];
         html += '<div class="seat-seg" style="left:' + left + '%;width:' + width + '%;background:' + color + ';"' +
-          ' data-tip="' + escapeHtml(p ? p.name : '未知') + '：' + escapeHtml(f ? f.nameZh : '') + ' → ' + escapeHtml(t ? t.nameZh : '') + '">' +
-          escapeHtml(f ? f.nameZh : '') + '→' + escapeHtml(t ? t.nameZh : '') + '</div>';
+          ' data-tip="' + escapeHtml(f ? f.nameZh : '未知站') + ' → ' + escapeHtml(t ? t.nameZh : '未知站') + '">' +
+          escapeHtml(f ? f.nameZh : '未知站') + '→' + escapeHtml(t ? t.nameZh : '未知站') + '</div>';
       });
       html += '</div></div>';
-    }
+    });
     html += '</div></div>';
     return html;
   }
@@ -750,7 +691,6 @@
         countExpress: $('#sim-count-express').value,
         countSkip: $('#sim-count-skip').value,
         seats: $('#sim-seats').value,
-        passengers: $('#sim-passengers').value,
         requests: $('#sim-requests').value,
         seed: $('#sim-seed').value
       };
@@ -768,7 +708,7 @@
     });
 
     $('#sim-cleanup').addEventListener('click', function () {
-      if (!confirmAction('确认清理全部仿真数据（sim 标记的线路/车次/乘车人/订单与自动生成的模拟车站）？手动登记的数据不受影响。')) return;
+      if (!confirmAction('确认清理全部仿真数据（sim 标记的线路/车次/订单与自动生成的模拟车站）？手动登记的数据不受影响。')) return;
       global.Simulation.cleanupSimulation();
       lastSimSummary = null;
       $('#sim-stats').innerHTML = '<div class="empty-state">仿真数据已清理，可重新配置参数运行</div>';
@@ -831,24 +771,22 @@
         return;
       }
       var rows = all.map(function (o) {
-        var p = Domain.getPassenger(o.passengerId);
         var st = train.stationSeq;
         var f = Domain.getStation(st[o.fromIdx]), t = Domain.getStation(st[o.toIdx]);
         var status = o.status === 'issued'
           ? '<span class="badge badge-issued">已出票</span>'
           : '<span class="badge badge-waiting">候补中</span>';
-        return '<tr><td>' + escapeHtml(p ? p.name : '未知') + '</td>' +
-          '<td>' + escapeHtml(f ? f.nameZh : st[o.fromIdx]) + ' → ' + escapeHtml(t ? t.nameZh : st[o.toIdx]) + '</td>' +
+        return '<tr><td>' + escapeHtml(f ? f.nameZh : (st[o.fromIdx] || '未知站')) + ' → ' +
+          escapeHtml(t ? t.nameZh : (st[o.toIdx] || '未知站')) + '</td>' +
           '<td>' + status + '</td>' +
-          '<td>' + (o.seatNo !== undefined && o.seatNo !== null ? '第 ' + o.seatNo + ' 号' : '—') + '</td>' +
-          '<td>' + escapeHtml(p ? Domain.maskIdCard(p.idCard) : '—') + '</td></tr>';
+          '<td>' + (o.seatNo !== undefined && o.seatNo !== null ? '第 ' + o.seatNo + ' 号' : '—') + '</td></tr>';
       }).join('');
-      box.innerHTML = '<table><thead><tr><th>乘车人</th><th>区间</th><th>状态</th><th>座位</th><th>证件号</th></tr></thead><tbody>' +
+      box.innerHTML = '<table><thead><tr><th>区间</th><th>状态</th><th>座位</th></tr></thead><tbody>' +
         rows + '</tbody></table>';
       return;
     }
 
-    // 该相邻区间段上的乘客（已出票且旅程覆盖该段）
+    // 该相邻区间段上的已出票订单（旅程覆盖该段）
     var seg = queryState.segIdx;
     var onSeg = all.filter(function (o) {
       return o.status === 'issued' && o.fromIdx <= seg && o.toIdx > seg;
@@ -857,20 +795,18 @@
     var t = Domain.getStation(train.stationSeq[seg + 1]);
     var title = escapeHtml(f ? f.nameZh : seg) + ' — ' + escapeHtml(t ? t.nameZh : (seg + 1)) + ' 段';
     if (!onSeg.length) {
-      box.innerHTML = emptyState(title + '：本段暂无已出票乘客');
+      box.innerHTML = emptyState(title + '：本段暂无已出票订单');
       return;
     }
     var rows2 = onSeg.map(function (o) {
-      var p = Domain.getPassenger(o.passengerId);
       var st = train.stationSeq;
       var jf = Domain.getStation(st[o.fromIdx]), jt = Domain.getStation(st[o.toIdx]);
-      return '<tr><td>' + escapeHtml(p ? p.name : '未知') + '</td>' +
-        '<td><code>' + escapeHtml(p ? Domain.maskIdCard(p.idCard) : '—') + '</code></td>' +
-        '<td>' + escapeHtml(jf ? jf.nameZh : st[o.fromIdx]) + ' → ' + escapeHtml(jt ? jt.nameZh : st[o.toIdx]) + '</td>' +
+      return '<tr><td>' + escapeHtml(jf ? jf.nameZh : (st[o.fromIdx] || '未知站')) + ' → ' +
+        escapeHtml(jt ? jt.nameZh : (st[o.toIdx] || '未知站')) + '</td>' +
         '<td>第 ' + o.seatNo + ' 号座位</td></tr>';
     }).join('');
-    box.innerHTML = '<p class="hint" style="margin: 4px 0 8px;">' + title + '：共 ' + onSeg.length + ' 名乘客</p>' +
-      '<table><thead><tr><th>乘客</th><th>证件号</th><th>完整旅程</th><th>座位</th></tr></thead><tbody>' +
+    box.innerHTML = '<p class="hint" style="margin: 4px 0 8px;">' + title + '：共 ' + onSeg.length + ' 张票</p>' +
+      '<table><thead><tr><th>完整旅程</th><th>座位</th></tr></thead><tbody>' +
       rows2 + '</tbody></table>';
   }
 
@@ -941,7 +877,6 @@
     renderLines();
     refreshLineStationSelect();
     renderLineDraft();
-    renderPassengers();
     refreshTrainStationSelect();
     refreshTrainLineSelect();
     renderTrainDraft();
@@ -965,8 +900,6 @@
       bindStationDelete();
       bindLineForm();
       bindLineDelete();
-      bindPassengerForm();
-      bindPassengerDelete();
       bindTrainForm();
       bindTrainDelete();
       bindBookingForm();

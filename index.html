@@ -24,7 +24,6 @@
         <button class="tab-btn" data-tab="sim" role="tab" aria-selected="false">自动仿真</button>
         <button class="tab-btn is-active" data-tab="stations" role="tab" aria-selected="true">车站</button>
         <button class="tab-btn" data-tab="lines" role="tab" aria-selected="false">线路</button>
-        <button class="tab-btn" data-tab="passengers" role="tab" aria-selected="false">乘车人</button>
         <button class="tab-btn" data-tab="trains" role="tab" aria-selected="false">车次</button>
         <button class="tab-btn" data-tab="booking" role="tab" aria-selected="false">购票</button>
         <button class="tab-btn" data-tab="orders" role="tab" aria-selected="false">订单与座位</button>
@@ -101,34 +100,6 @@
       </div>
     </section>
 
-    <!-- 乘车人面板 -->
-    <section class="panel" id="panel-passengers" role="tabpanel" hidden>
-      <div class="panel-grid">
-        <div class="card form-card">
-          <h2 class="card-title">登记乘车人</h2>
-          <form id="passenger-form" autocomplete="off">
-            <div class="field">
-              <label for="passenger-name">姓名 <span class="req">*</span></label>
-              <input type="text" id="passenger-name" placeholder="如：张三" maxlength="20" required />
-            </div>
-            <div class="field">
-              <label for="passenger-idcard">身份证号 <span class="req">*</span></label>
-              <input type="text" id="passenger-idcard" placeholder="18 位（末位可为 X）" maxlength="18" required />
-              <p class="hint" id="idcard-hint">17 位数字 + 校验位（数字或 X）</p>
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">登记乘车人</button>
-          </form>
-        </div>
-        <div class="card list-card">
-          <div class="list-head">
-            <h2 class="card-title">乘车人列表</h2>
-            <span class="badge badge-count" id="passenger-count">0 人</span>
-          </div>
-          <div class="table-wrap" id="passenger-table-wrap"></div>
-        </div>
-      </div>
-    </section>
-
     <!-- 车次面板 -->
     <section class="panel" id="panel-trains" role="tabpanel" hidden>
       <div class="panel-grid">
@@ -186,10 +157,6 @@
           <div class="card form-card">
             <h2 class="card-title">购票下单</h2>
             <form id="booking-form" autocomplete="off">
-              <div class="field">
-                <label for="booking-passenger">乘车人 <span class="req">*</span></label>
-                <select id="booking-passenger" required></select>
-              </div>
               <div class="field">
                 <label for="booking-train">车次 <span class="req">*</span></label>
                 <select id="booking-train" required></select>
@@ -301,20 +268,14 @@
                 <input type="number" id="sim-seats" min="1" max="2147483647" value="4" />
               </div>
               <div>
-                <label for="sim-passengers">乘车人数</label>
-                <input type="number" id="sim-passengers" min="1" max="2147483647" value="12" />
-              </div>
-            </div>
-            <div class="field two-col">
-              <div>
                 <label for="sim-requests">每车购票请求数</label>
                 <input type="number" id="sim-requests" min="1" max="2147483647" value="10" />
               </div>
-              <div>
-                <label for="sim-seed">随机种子</label>
-                <input type="number" id="sim-seed" min="-1" max="2147483647" value="-1" />
-                <p class="hint">-1 为随机种子；其余值结果可复现</p>
-              </div>
+            </div>
+            <div class="field">
+              <label for="sim-seed">随机种子</label>
+              <input type="number" id="sim-seed" min="-1" max="2147483647" value="-1" />
+              <p class="hint">-1 为随机种子；其余值结果可复现</p>
             </div>
             <button type="submit" class="btn btn-primary btn-block" id="sim-run">运行仿真</button>
             <button type="button" class="btn btn-danger-outline btn-block" id="sim-cleanup" style="margin-top: 10px;">清理仿真数据</button>

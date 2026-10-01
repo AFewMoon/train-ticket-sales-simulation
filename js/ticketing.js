@@ -3,7 +3,10 @@
       [fromIdx, toIdx) 完全空闲即出票到该座位——允许座位存在空洞，最大化座位利用率。
    —— 在线机制：候补队列按车次持久化（tts:queues，单条时戳有序列表），
       入队 O(log W)、出票 O(1) 移除；退票后自动按时间戳补录。
-   —— 事件流：购票/出票/候补/退票/兑现/自动扫描写入 tts:events（上限 500）。 */
+   —— 座位分配与容量统计只遍历「已占用座位集合」，复杂度与座位数上限解耦（支持 INT_MAX）。
+   —— 批量事务：beginBatch()/endBatch() 供仿真等高频场景将 orders/queues/events
+      的读写收敛到内存缓存、结束时一次性落盘。
+   —— 事件流：购票/出票/候补/退票/兑现写入 tts:events（上限 500）。 */
 (function (global) {
   'use strict';
 
@@ -12,8 +15,46 @@
 
   var EVENTS_CAP = 500;
 
-  function persistOrders(orders) {
-    return global.Storage.write(K.orders, orders);
+  /* ================= 批量事务缓冲 ================= */
+
+  var batch = null; // { orders, queues, events, dirtyOrders, dirtyQueues, dirtyEvents }
+
+  function beginBatch() {
+    if (batch) return;
+    batch = {
+      orders: global.Storage.read(K.orders, []),
+      queues: global.Storage.read(K.queues, { trains: {} }),
+      events: global.Storage.read(K.events, []),
+      dirtyOrders: false,
+      dirtyQueues: false,
+      dirtyEvents: false
+    };
+  }
+
+  function endBatch() {
+    if (!batch) return;
+    if (batch.dirtyOrders) global.Storage.write(K.orders, batch.orders);
+    if (batch.dirtyQueues) global.Storage.write(K.queues, batch.queues);
+    if (batch.dirtyEvents) global.Storage.write(K.events, batch.events);
+    batch = null;
+  }
+
+  function getOrders() { return batch ? batch.orders : global.Storage.read(K.orders, []); }
+  function saveOrders(orders) {
+    if (batch) { batch.orders = orders; batch.dirtyOrders = true; }
+    else global.Storage.write(K.orders, orders);
+  }
+  function getQueues() { return batch ? batch.queues : global.Storage.read(K.queues, { trains: {} }); }
+  function saveQueues(q) {
+    if (batch) { batch.queues = q; batch.dirtyQueues = true; }
+    else global.Storage.write(K.queues, q);
+  }
+  function addEventRecord(ev) {
+    var events = batch ? batch.events : global.Storage.read(K.events, []);
+    events.push(ev);
+    if (events.length > EVENTS_CAP) events = events.slice(events.length - EVENTS_CAP);
+    if (batch) { batch.events = events; batch.dirtyEvents = true; }
+    else global.Storage.write(K.events, events);
   }
 
   /* ================= 事件流 ================= */
@@ -27,8 +68,7 @@
   };
 
   function pushEvent(type, detail, trainCode, orderId) {
-    var events = global.Storage.read(K.events, []);
-    events.push({
+    addEventRecord({
       id: Domain.uid('e'),
       ts: Date.now(),
       type: type,
@@ -36,26 +76,15 @@
       orderId: orderId || '',
       detail: detail
     });
-    if (events.length > EVENTS_CAP) events = events.slice(events.length - EVENTS_CAP);
-    global.Storage.write(K.events, events);
   }
 
   function listEvents(limit) {
-    var events = global.Storage.read(K.events, []);
+    var events = batch ? batch.events : global.Storage.read(K.events, []);
     return events.slice(-limit).reverse();
   }
 
   /* ================= 候补队列（在线持久化，时戳有序） ================= */
 
-  function readQueues() {
-    return global.Storage.read(K.queues, { trains: {} });
-  }
-
-  function writeQueues(q) {
-    return global.Storage.write(K.queues, q);
-  }
-
-  /** 取某车次的候补队列（数组，按 createdAt 升序） */
   function getQueue(q, trainCode) {
     if (!q.trains[trainCode]) q.trains[trainCode] = [];
     return q.trains[trainCode];
@@ -86,7 +115,7 @@
   /* ================= 查询 ================= */
 
   function ordersOfTrain(trainCode) {
-    return Domain.listOrders().filter(function (o) { return o.trainCode === trainCode; });
+    return getOrders().filter(function (o) { return o.trainCode === trainCode; });
   }
 
   function waitingOrdersOfTrain(trainCode) {
@@ -96,16 +125,28 @@
   }
 
   function allWaitingOrders() {
-    return Domain.listOrders().filter(function (o) { return o.status === 'waiting'; });
+    return getOrders().filter(function (o) { return o.status === 'waiting'; });
   }
 
-  /* ================= 差分/前缀和：座位分段占用 ================= */
+  /* ================= 座位占用（与座位数上限解耦） ================= */
 
-  /** 统计某座位已出票订单在各相邻区间的覆盖张数。返回长度 S-1 的数组 */
-  function segmentLoad(issuedOrders, stationCount, seatNo) {
-    var diff = new Array(stationCount).fill(0);
+  /**
+   * 将已出票订单按座位分组：{ [seatNo]: [order...] }。
+   * 只包含有票的座位——未占用座位不占内存与计算量。
+   */
+  function groupBySeat(issuedOrders) {
+    var bySeat = Object.create(null);
     issuedOrders.forEach(function (o) {
-      if (o.seatNo !== seatNo) return;
+      if (o.seatNo === undefined || o.seatNo === null) return;
+      (bySeat[o.seatNo] = bySeat[o.seatNo] || []).push(o);
+    });
+    return bySeat;
+  }
+
+  /** 单座位的分段占用（只统计该座位自己的票段） */
+  function seatLoad(seatOrders, stationCount) {
+    var diff = new Array(stationCount + 1).fill(0);
+    seatOrders.forEach(function (o) {
       diff[o.fromIdx]++;
       diff[o.toIdx]--;
     });
@@ -118,49 +159,77 @@
     return load;
   }
 
-  /** 车次剩余运力摘要 */
-  function capacitySummary(train, orders) {
-    var stationCount = train.stationSeq.length;
-    var issued = orders.filter(function (o) { return o.status === 'issued'; });
-    var freeSegments = 0, totalSegments = stationCount - 1;
-    var perSeat = [];
-    for (var s = 1; s <= train.seatCount; s++) {
-      var load = segmentLoad(issued, stationCount, s);
-      var free = load.filter(function (x) { return x === 0; }).length;
-      perSeat.push({ seatNo: s, freeSegments: free });
-      freeSegments += free;
-    }
-    return { totalSegments: totalSegments, freeSegments: freeSegments, perSeat: perSeat };
+  /**
+   * 兼容保留：按座位号统计分段占用（旧接口，性能同新实现）。
+   */
+  function segmentLoad(issuedOrders, stationCount, seatNo) {
+    return seatLoad(issuedOrders.filter(function (o) { return o.seatNo === seatNo; }), stationCount);
   }
 
-  /* ================= 逐单区间适配 ================= */
-
-  /** 为单张订单寻找座位：目标区间 [fromIdx, toIdx) 在该座位上完全空闲即出票 */
+  /**
+   * 为单张订单寻找座位：
+   * 1) 逐个「已占用座位」检查目标区间是否完全空闲（O(占用座位数 × S)，与座位上限无关）；
+   * 2) 全部冲突时分配最小可用新座位号（未占用座位必然全程空闲）。
+   */
   function allocateSeatForOrder(train, issuedOrders, order) {
     var stationCount = train.stationSeq.length;
-    for (var s = 1; s <= train.seatCount; s++) {
-      var load = segmentLoad(issuedOrders, stationCount, s);
+    var bySeat = groupBySeat(issuedOrders);
+    for (var seatNo in bySeat) {
+      var load = seatLoad(bySeat[seatNo], stationCount);
       var free = true;
       for (var i = order.fromIdx; i < order.toIdx; i++) {
         if (load[i] > 0) { free = false; break; }
       }
-      if (free) return s;
+      if (free) return Number(seatNo);
     }
-    return null;
+    // 新座位：未占用座位全程空闲，取最小可用编号
+    var s = 1;
+    while (bySeat[s]) s++;
+    return s <= train.seatCount ? s : null;
   }
 
+  /** 车次剩余运力摘要（未占用座位以计数表示，不逐一座位枚举） */
+  function capacitySummary(train, orders) {
+    var stationCount = train.stationSeq.length;
+    var totalSegments = Math.max(stationCount - 1, 0);
+    var issued = orders.filter(function (o) { return o.status === 'issued'; });
+    var bySeat = groupBySeat(issued);
+
+    var freeSegments = 0;
+    var perSeat = [];
+    Object.keys(bySeat).forEach(function (seatNo) {
+      var load = seatLoad(bySeat[seatNo], stationCount);
+      var free = load.filter(function (x) { return x === 0; }).length;
+      perSeat.push({ seatNo: Number(seatNo), freeSegments: free });
+      freeSegments += free;
+    });
+    perSeat.sort(function (a, b) { return a.seatNo - b.seatNo; });
+
+    var emptySeatCount = Math.max(train.seatCount - perSeat.length, 0);
+    freeSegments += emptySeatCount * totalSegments;
+
+    return {
+      totalSegments: totalSegments,
+      freeSegments: freeSegments,
+      perSeat: perSeat,
+      emptySeatCount: emptySeatCount
+    };
+  }
+
+  /* ================= 补录扫描（单 train，逐单区间适配） ================= */
+
   /**
-   * 对某车次执行候补补录扫描：按队列时戳升序逐单尝试区间适配，
-   * 出票即出队并进入下一单（后续订单仍继续尝试，最大化利用率）。
+   * 按队列时戳升序逐单尝试区间适配：出票即出队并继续尝试后续订单
+   * （最大化利用率）；无适配座位则留队。
    * 返回 { issued: [order...], changed: bool }
    */
   function processTrainWaiting(train) {
-    var orders = Domain.listOrders();
+    var orders = getOrders();
     var orderById = {};
     orders.forEach(function (o) { orderById[o.id] = o; });
     var issued = orders.filter(function (o) { return o.trainCode === train.code && o.status === 'issued'; });
 
-    var q = readQueues();
+    var q = getQueues();
     var queue = getQueue(q, train.code);
 
     var result = [];
@@ -187,15 +256,15 @@
     q.trains[train.code] = kept;
 
     if (changed) {
-      persistOrders(orders);
-      writeQueues(q);
+      saveOrders(orders);
+      saveQueues(q);
     }
     return { issued: result, changed: changed };
   }
 
-  /** 遍历全部有候补的车次执行补录扫描（供定时器/全局入口调用），返回兑现总单数 */
+  /** 遍历全部有候补的车次执行补录扫描（供手动入口调用），返回兑现总单数 */
   function processAllWaiting() {
-    var q = readQueues();
+    var q = getQueues();
     var fulfilled = 0;
     Domain.listTrains().forEach(function (t) {
       var queue = q.trains[t.code];
@@ -213,35 +282,32 @@
    * 购票：创建订单 → O(log W) 入队 → 立即对该车次做一次补录扫描。
    * 返回 { ok, issued, seatNo?, position?, order }
    */
-  function purchase(trainCode, passengerId, fromIdx, toIdx) {
+  function purchase(trainCode, fromIdx, toIdx) {
     var train = Domain.getTrain(trainCode);
     if (!train) return { ok: false, msg: '车次不存在' };
-    var passenger = Domain.getPassenger(passengerId);
-    if (!passenger) return { ok: false, msg: '乘车人不存在' };
     if (!Domain.isValidRange(fromIdx, toIdx)) return { ok: false, msg: '非法区间' };
     if (toIdx >= train.stationSeq.length) return { ok: false, msg: '区间超出车次站序' };
 
-    var orders = Domain.listOrders();
+    var orders = getOrders();
     var newOrder = {
       id: Domain.uid('o'),
       trainCode: trainCode,
-      passengerId: passengerId,
       fromIdx: fromIdx,
       toIdx: toIdx,
       status: 'waiting',
       createdAt: Date.now() + (orders.length % 1000) * 0.001 // 保证同毫秒下排序稳定
     };
     orders.push(newOrder);
-    if (!persistOrders(orders)) return { ok: false, msg: '保存订单失败' };
+    saveOrders(orders);
 
     // 在线入队 + 补录扫描
-    var q = readQueues();
+    var q = getQueues();
     enqueueOrder(q, newOrder);
-    writeQueues(q);
+    saveQueues(q);
     pushEvent('purchase', '购票请求：' + trainCode + ' ' + fromIdx + '→' + toIdx, trainCode, newOrder.id);
 
     processTrainWaiting(train);
-    var final = Domain.listOrders().find(function (o) { return o.id === newOrder.id; });
+    var final = getOrders().find(function (o) { return o.id === newOrder.id; });
 
     if (final && final.status === 'issued') {
       pushEvent('issued', '出票成功：座位 ' + final.seatNo, trainCode, newOrder.id);
@@ -261,13 +327,13 @@
    * 返回 { ok, fulfilled?: n }
    */
   function refundOrder(orderId) {
-    var order = Domain.listOrders().find(function (o) { return o.id === orderId; });
+    var order = getOrders().find(function (o) { return o.id === orderId; });
     if (!order) return { ok: false, msg: '订单不存在' };
 
     var wasIssued = order.status === 'issued';
-    var q = readQueues();
+    var q = getQueues();
     dequeueOrder(q, order);
-    writeQueues(q);
+    saveQueues(q);
 
     var res = Domain.removeOrder(orderId);
     if (!res.ok) return res;
@@ -287,11 +353,12 @@
 
   /**
    * 队列与 orders 对账（幂等）：
-   * - 队列结构与订单集合 diff：悬空条目移除、缺失候补按 createdAt 补入；
+   * - 旧版 buckets 结构或已不存在车次的队列：废弃重建；
+   * - 队列内悬空条目（订单已删/已出票）移除、缺失候补按 createdAt 补入；
    * - 随后对每个有候补的车次做一次补录扫描。
    */
   function scanAllTrains() {
-    var orders = Domain.listOrders();
+    var orders = getOrders();
     var waitingByTrain = {};
     var waitingIds = {};
     orders.forEach(function (o) {
@@ -300,10 +367,9 @@
       waitingIds[o.id] = true;
     });
 
-    var q = readQueues();
+    var q = getQueues();
     var qChanged = false;
 
-    // 旧版结构（buckets）或已不存在车次的队列：整体废弃重建
     Object.keys(q.trains).forEach(function (code) {
       var queue = q.trains[code];
       var legacy = queue && !Array.isArray(queue) && queue.buckets;
@@ -313,7 +379,6 @@
       }
     });
 
-    // 清理悬空条目
     Object.keys(q.trains).forEach(function (code) {
       var queue = q.trains[code];
       for (var i = queue.length - 1; i >= 0; i--) {
@@ -324,7 +389,6 @@
       }
     });
 
-    // 补入缺失的 waiting 订单（保持 createdAt 升序）
     Object.keys(waitingByTrain).forEach(function (code) {
       if (!Domain.getTrain(code)) return;
       waitingByTrain[code].forEach(function (o) {
@@ -343,9 +407,8 @@
       });
     });
 
-    if (qChanged) writeQueues(q);
+    if (qChanged) saveQueues(q);
 
-    // 对每个有候补的车次做一次补录扫描（数据修复）
     var fulfilled = processAllWaiting();
     return { fulfilled: fulfilled };
   }
@@ -353,6 +416,8 @@
   /* ================= 导出 ================= */
 
   global.Ticketing = {
+    beginBatch: beginBatch,
+    endBatch: endBatch,
     purchase: purchase,
     refundOrder: refundOrder,
     processTrainWaiting: processTrainWaiting,

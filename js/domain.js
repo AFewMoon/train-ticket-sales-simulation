@@ -1,4 +1,4 @@
-/* 领域层：车站 / 乘车人 / 车次的增删查、唯一号码与车次号生成、身份证与区间校验。
+/* 领域层：车站 / 线路 / 车次的增删查、唯一号码与车次号生成、区间与子序列校验。
    不操作 DOM，所有数据经 Storage 层持久化。 */
 (function (global) {
   'use strict';
@@ -16,7 +16,6 @@
   /* ---------- 数据读取 ---------- */
 
   function listStations() { return global.Storage.read(K.stations, []); }
-  function listPassengers() { return global.Storage.read(K.passengers, []); }
   function listTrains() { return global.Storage.read(K.trains, []); }
   function listOrders() { return global.Storage.read(K.orders, []); }
   function listLines() { return global.Storage.read(K.lines, []); }
@@ -127,35 +126,6 @@
     saveSeq();
   }
 
-  /* ---------- 身份证校验 ---------- */
-
-  var ID_WEIGHTS = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
-  var ID_CHECK_CODES = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
-
-  function isValidIdCard(id) {
-    if (typeof id !== 'string') return false;
-    id = id.trim().toUpperCase();
-    if (!/^\d{17}[\dX]$/.test(id)) return false;
-    var sum = 0;
-    for (var i = 0; i < 17; i++) sum += Number(id[i]) * ID_WEIGHTS[i];
-    return ID_CHECK_CODES[sum % 11] === id[17];
-  }
-
-  /** 身份证脱敏：保留前 4 位与后 4 位 */
-  function maskIdCard(id) {
-    if (!id || id.length < 8) return id;
-    return id.slice(0, 4) + '***********' + id.slice(-4);
-  }
-
-  /** 按 17 位数字计算校验位，返回完整 18 位身份证号（供仿真批量构造合法证件） */
-  function makeValidIdCard(digits17) {
-    var d = String(digits17);
-    if (!/^\d{17}$/.test(d)) return null;
-    var sum = 0;
-    for (var i = 0; i < 17; i++) sum += Number(d[i]) * ID_WEIGHTS[i];
-    return d + ID_CHECK_CODES[sum % 11];
-  }
-
   /* ---------- 车站 ---------- */
 
   function addStation(nameZh, nameEn) {
@@ -190,38 +160,6 @@
 
   function getStation(no) {
     return listStations().find(function (s) { return s.no === no; }) || null;
-  }
-
-  /* ---------- 乘车人 ---------- */
-
-  function addPassenger(name, idCard) {
-    name = String(name || '').trim();
-    idCard = String(idCard || '').trim().toUpperCase();
-    if (!name) return { ok: false, msg: '姓名不能为空' };
-    if (!isValidIdCard(idCard)) return { ok: false, msg: '身份证号格式不正确（需通过 18 位校验位验证）' };
-    var passengers = listPassengers();
-    if (passengers.some(function (p) { return p.idCard === idCard; })) {
-      return { ok: false, msg: '该身份证号已登记' };
-    }
-    var passenger = { id: uid('p'), name: name, idCard: idCard };
-    passengers.push(passenger);
-    if (!global.Storage.write(K.passengers, passengers)) return { ok: false, msg: '保存失败' };
-    return { ok: true, passenger: passenger };
-  }
-
-  function removePassenger(id) {
-    var passengers = listPassengers();
-    var idx = passengers.findIndex(function (p) { return p.id === id; });
-    if (idx === -1) return { ok: false, msg: '乘车人不存在' };
-    var used = listOrders().some(function (o) { return o.passengerId === id; });
-    if (used) return { ok: false, msg: '该乘车人已存在订单，禁止删除' };
-    passengers.splice(idx, 1);
-    if (!global.Storage.write(K.passengers, passengers)) return { ok: false, msg: '保存失败' };
-    return { ok: true };
-  }
-
-  function getPassenger(id) {
-    return listPassengers().find(function (p) { return p.id === id; }) || null;
   }
 
   /* ---------- 线路 ---------- */
@@ -376,7 +314,6 @@
     uid: uid,
     listStations: listStations,
     listLines: listLines,
-    listPassengers: listPassengers,
     listTrains: listTrains,
     listOrders: listOrders,
     removeOrder: removeOrder,
@@ -390,16 +327,10 @@
     getLine: getLine,
     lineUsedByTrain: lineUsedByTrain,
     isSubsequence: isSubsequence,
-    addPassenger: addPassenger,
-    removePassenger: removePassenger,
-    getPassenger: getPassenger,
     addTrain: addTrain,
     removeTrain: removeTrain,
     getTrain: getTrain,
-    isValidIdCard: isValidIdCard,
     isValidTrainCode: isValidTrainCode,
-    makeValidIdCard: makeValidIdCard,
-    maskIdCard: maskIdCard,
     isValidRange: isValidRange,
     rebuildSeqPools: rebuildSeqPools
   };
