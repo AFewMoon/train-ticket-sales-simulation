@@ -76,7 +76,15 @@ export function createContainer(storage: StorageLike = createBrowserStorage()): 
 
 let defaultContainer: Container | null = null;
 
-/** 浏览器默认容器（单例） */
+/** 浏览器默认容器注入：IndexedDB 内存镜像就绪后由 main.ts 调用
+    （存储初始化是异步的，容器创建必须等镜像预热完成） */
+export function initDefaultContainer(storage: StorageLike): Container {
+  defaultContainer = createContainer(storage);
+  return defaultContainer;
+}
+
+/** 浏览器默认容器（单例）。注意：默认走同步 localStorage 降级链，
+    主入口（main.ts）应使用 initDefaultContainer 注入 IndexedDB 镜像存储 */
 export function getContainer(): Container {
   if (!defaultContainer) defaultContainer = createContainer();
   return defaultContainer;

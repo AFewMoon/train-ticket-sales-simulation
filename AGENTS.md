@@ -1,13 +1,13 @@
 # AGENTS.md — 项目说明与经验教训
 
-《火车票销售模拟》：纯前端单页应用（**TypeScript + Vite（IIFE 单文件产物）** + localStorage），双击 `index.html` 或任意静态服务即可运行；**重度计算（出票/补录/退票/批量仿真/对账）运行于 Web Worker，失效自动降级主线程直算**；核心算法由 Vitest 单测覆盖。
+《火车票销售模拟》：纯前端单页应用（**TypeScript + Vite（IIFE 单文件产物）** + IndexedDB 持久化（v3.2 起，内存镜像 + 后台防抖落盘，localStorage 为降级/迁移来源）），双击 `index.html` 或任意静态服务即可运行；**重度计算（出票/补录/退票/批量仿真/对账）运行于 Web Worker，失效自动降级主线程直算**；核心算法由 Vitest 单测覆盖。
 
 ## 项目结构
 
 ```
 index.html                     # 单页入口，七个标签面板（引用 dist/train-ticket-sales.js）
 css/style.css                  # 主题变量、卡片、座位图、toast、响应式
-src/main.ts                    # 启动链：种子化 → 对账 → 号码池重建 → UI 初始化
+src/main.ts                    # 启动链：IndexedDB 镜像就绪 → 容器/UI 注入 → 种子化 → 对账 → 号码池重建
 src/container.ts               # 组合根：依赖装配，方向严格单向
 src/domain/model/              # OrderStatus/EventType/SimType 枚举、SeatSegment/StationNo
                                #   值对象、Order 实体类（状态迁移收口）
@@ -16,7 +16,8 @@ src/domain/engine/             # 纯函数计算引擎（快照进/补丁出）�
 src/domain/repository.ts       # IRepository<T> 存储契约（domain 定义，infra 实现）
 src/domain/services/           # Station/Line/Train/Numbering/Ticketing 领域服务（持久化收口）+ 对账
 src/infrastructure/            # 强类型 KeyRegistry、泛型 LocalStorageRepository<T>、
-                               #   BatchScope 批量事务缓冲、OrderRepository 实体映射
+                               #   IdbMirrorStorage 内存镜像（IndexedDB 防抖落盘）、BatchScope 批量事务缓冲、
+                               #   OrderRepository 实体映射
 src/workers/engine.worker.ts   # 计算引擎 Worker 入口（?worker&inline 内联 blob，IIFE 自包含）
 src/application/               # SimulationService 仿真、BookingAppService 用例编排、
                                #   ComputeGateway（Worker/直算双路径 + 失效自动降级）、
@@ -37,7 +38,15 @@ dist/                          # 构建产物（入库，保证克隆后双击�
 - **补丁策略**：`replace-codes`（购票/退票，按 code 整段替换）、`replace-all`（对账，整体重建文件对象以丢弃 legacy 残留键）、`merge-append`（预留，按 createdAt 归并）。仿真补丁还包含「既有候补被兑现」的订单变更（按 id upsert），否则丢失状态更新。
 - **主线程职责**：EngineTransport 构建快照、应用补丁、登记仿真车次到号码池；轻量查询（容量/候补名次/座位图/查询区）保持同步直读，渲染不异步化。
 - **SharedArrayBuffer 被否决的原因**：GitHub Pages 无法设置 COOP/COEP 响应头、file:// 直开无响应头，且 Worker 内无 localStorage，SAB 无法解决持久化共享。
-- **可观测标记**：`globalThis.__ttsCompute` 为 `'worker'`（网关升级成功）或 `'direct'`（默认/降级），供浏览器回归断言。
+- **可观测标记**：`globalThis.__ttsCompute` 为 `'worker'`（网关升级成功）或 `'direct'`（默认/降级）；`globalThis.__ttsStorage` 为 `'idb'`（IndexedDB 镜像生效）、`'local'`（降级 localStorage）或 `'memory'`（降级内存），供浏览器回归断言。
+
+## IndexedDB 存储架构（v3.2）
+
+- **内存镜像 + 后台落盘**：`IRepository`/`StorageLike` 同步契约不变（domain/application/ui 零改动，与「轻量查询同步直读」决策一致）。`IdbMirrorStorage` 启动时一次性 `getAll` 预热内存 Map，此后读写同步 O(1)；写操作登记脏键，**500ms 防抖合并**（同键去重保留末值）落盘 IndexedDB，`visibilitychange(hidden)`/`pagehide` 兜底 flush，落盘失败回滚脏键稍后自动重试。
+- **异步引导时序**：存储预热是异步的，`main.ts` 须先 `await createBrowserStorageAsync()` → `initDefaultContainer(storage)`，再**动态 `import('./ui/ui')`**——`ui.ts` 模块顶层即取容器（全 src 唯一顶层副作用），静态 import 会在镜像就绪前触发容器创建。
+- **一次性迁移**：IndexedDB 为空且 localStorage 存在 `tts:*` 键时整体搬运（跳过已退役键），落盘成功后清除旧键；镜像非空则跳过，幂等可重入。
+- **降级链**：IndexedDB 不可用（隐私模式/打开被阻塞/预热异常）→ localStorage → 内存，行为与 v3.1 前一致；IndexedDB 交互收敛在 `IdbLike` 最小接口后，node 单测注入内存假实现，无需 fake-indexeddb 依赖。
+- **已知局限（本期留档）**：镜像载入后不感知其他标签页写入，多开页面后写者以自身镜像覆盖（旧 localStorage 为读时直读、天然跨页共享）。如需恢复跨页语义，可引入 BroadcastChannel 通知他页重载镜像。
 
 ## 核心业务规则
 
@@ -168,9 +177,17 @@ Vite 的 `?worker&inline` 可把 Worker 内联为 base64 blob（`worker.format: 
 
 `applyPatchToStore` 在开头 `const q = store.getQueues()`、各分支修改 `q`、末尾无条件 `saveQueues(q)`——`replace-all` 分支先保存了重建的新文件对象，末尾又把**旧对象**整体写了回去，legacy 残留键与悬空条目因此"复活"（且仅在 legacy 测试与悬空测试中同时现形）。修复：replace-all 分支直接 return，其余分支共享局部可变对象。教训：**「先取值、分支修改、统一写回」的函数里，任何"整体替换"分支都必须提前返回或改写同一引用；这类 bug 会被"对账自愈"机制掩盖成偶发问题，测试要对新旧两代持久化形状分别断言。**
 
+### 31. 同步契约下的异步存储：把异步性吸收在"预热 + 镜像"里，而不是传播异步
+
+localStorage→IndexedDB 升级面对的根本矛盾是 IndexedDB 天然异步而全链路同步直读。方案不是把 `IRepository` 改成 Promise（那会波及全部领域服务与 UI），而是让存储实现自己吸收异步性：启动时 await 全量预热内存镜像，此后同步 API 不变，写操作防抖合并后台落盘。配套两个关键点：① 迁移必须幂等（镜像非空即跳过，防重入覆盖新数据）；② 依赖模块顶层副作用的模块（ui.ts）必须改为显式注入。教训：**引入异步依赖时优先寻找"在边界处一次性消化异步"的结构（预热/快照/镜像），而不是让 async 沿调用链扩散；判据是"谁能等待"——只有启动序列能等待，运行时的每一次读写都不能。**
+
+### 32. 单文件 IIFE 里动态 import 不会推迟模块求值——顶层副作用必须显式注入
+
+为等 IndexedDB 镜像预热，曾把 `import('./ui/ui')` 改成动态 import 以"推迟" ui.ts 顶层 `getContainer()`。结果页面出现两个容器：Rollup 单 chunk（`inlineDynamicImports`）会把动态 import 的模块提升进主包并**随 bundle 求值立即执行其顶层副作用**——`getContainer()` 在镜像就绪前创建了 localStorage 回退容器，UI 的全部读写（含仿真数据）静默分流到 localStorage，IDB 侧只有启动链写入。靠「劫持 `Storage.prototype.setItem` 捕获调用栈 + `createContainer` 临时日志对比两次创建的 storage 类型」定位。修复：ui.ts 改为 `initUi(container)` 延迟注入，main.ts 恢复静态 import。教训：**「动态 import 会推迟模块求值」只在多 chunk（code splitting）下成立；单文件 bundle 中所有模块顶层代码都在脚本加载时执行。模块顶层永远不要取环境相关单例（容器/存储/Worker），一律显式注入。排查"数据被写去别处"类问题，先验证'是否存在第二实例'，劫持原型方法抓调用栈是最快手段。**
+
 ## 验证清单（回归测试用）
 
-> 1~13、15~17 项已有 Vitest 自动化覆盖（tests/*.spec.ts，45 用例；其中 Worker 路径经 FakeWorker 回环验证），浏览器端仅做冒烟与渲染回归。
+> 1~13、15~17 项已有 Vitest 自动化覆盖（tests/*.spec.ts，59 用例；其中 Worker 路径经 FakeWorker 回环验证，IndexedDB 镜像经 IdbLike 假实现验证），浏览器端仅做冒烟与渲染回归。
 
 1. 登记车站 → 号码唯一且随机；重复中文名被拒。（domain.spec：含 600 站号码唯一压测）
 2. 登记车次 → 站序 < 2 站或重复被拒；自定义车次号格式（**仅 G/D 字头** + 4 位数字，首位 1~3/6~8、末位奇数）非法或重复被拒，留空随机生成（G/D 等概率）；**启动时自动清理非 G/D 字头的存量车次（连带订单含取消历史与候补队列条目）**。（domain.spec）
@@ -190,6 +207,7 @@ Vite 的 `?worker&inline` 可把 Worker 内联为 base64 blob（`worker.format: 
 16. 旧数据兼容：legacy 队列 `{buckets}` 结构对账废弃重建；旧 `'waiting'/'issued'` 状态字符串直读兼容；退票后落盘 `'cancelled'`。（migration.spec）
 17. 计算架构：`__ttsCompute === 'worker'`（Worker 生效）；同种子仿真经 Worker 与直算统计一致；Worker postMessage 失效自动降级直算且结果正确；补丁三策略（replace-codes/replace-all/merge-append）合并正确。（engine.spec）
 18. 退役字头（v3.1）：车次号仅 G/D；注入 K 字头存量（含订单与队列）后启动即被 purgeNonGDTrains 清除，号码池重建后 K 号不复用；随机生成的车次号全部匹配 /^[GD]/。（domain.spec）
+19. 存储架构（v3.2）：`__ttsStorage === 'idb'`（IndexedDB 镜像生效）；数据写入后刷新页面可恢复（IndexedDB 持久化）；localStorage 旧 `tts:*` 数据启动时一次性迁移进 IndexedDB 并清除旧键（镜像非空时跳过，幂等）；防抖窗口内同键多次写合并为一次落盘、落盘失败回滚重试；IndexedDB 不可用回退 localStorage/内存。（idb-mirror.spec + 浏览器冒烟）
 
 ## 运行
 

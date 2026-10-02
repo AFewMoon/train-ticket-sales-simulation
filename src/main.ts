@@ -1,15 +1,21 @@
-/* 应用初始化：退役键清理 → 种子化内置线路 → Worker 计算网关装配 →
-   退役字头清理（非 G/D 车次）→ 对账修复 → 号码池重建 → 绑定与首渲染。
-   对账与后续购票/退票/仿真的重度计算经网关发起（Web Worker 优先，失败自动直算）。 */
+/* 应用初始化：IndexedDB 存储就绪 → 注入容器与 UI → 退役键清理 → 种子化内置线路 →
+   Worker 计算网关装配 → 退役字头清理（非 G/D 车次）→ 对账修复 → 号码池重建 → 绑定与首渲染。
+   存储为 IndexedDB 内存镜像（失败回退 localStorage，见 infrastructure/storage.ts）。
+   注意：镜像预热是异步的，且单文件 IIFE 中动态 import 不会推迟 ui.ts 模块求值，
+   故 ui.ts 的容器必须经 initUi 延迟注入（教训 #32），不能在模块顶层取。 */
 
-import { getContainer } from './container';
+import { initDefaultContainer } from './container';
+import { createBrowserStorageAsync } from './infrastructure/storage';
 import { removeLegacyKeys } from './infrastructure/keys';
 import { attachWorkerCompute } from './application/compute-gateway';
 import { purgeNonGDTrains } from './domain/services/reconciliation';
-import { bindAll, renderAll, switchTab } from './ui/ui';
+import { bindAll, initUi, renderAll, switchTab } from './ui/ui';
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const c = getContainer();
+  // 存储升级：await IndexedDB 镜像预热（含 localStorage 旧数据一次性迁移）
+  const storage = await createBrowserStorageAsync();
+  const c = initDefaultContainer(storage);
+  initUi(c);
 
   // 移除已退役实体的残留键（教训 #21：全量引用清扫）
   removeLegacyKeys(c.storage);

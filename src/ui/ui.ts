@@ -2,7 +2,7 @@
    只做 DOM 与事件；业务规则全部经应用层（booking/simulation），渲染数据为 ViewModel。
    渲染兜底保留 safe 语义：关联实体缺失/下标越界显示占位文案，绝不输出 undefined/NaN（教训 #22/#23）。 */
 
-import { getContainer } from '../container';
+import type { Container } from '../container';
 import { OrderStatus } from '../domain/model/order';
 import { EVENT_META, isEventType, UNKNOWN_EVENT_META } from '../domain/model/event';
 import { isValidSegment } from '../domain/model/seat-segment';
@@ -17,7 +17,15 @@ import type {
 import type { TrainSeatMapModel } from '../application/view-models';
 import { renderTrainSeatMaps } from './seat-map-canvas';
 
-const c = getContainer();
+/** 容器由 main.ts 在存储就绪后注入（initUi）。模块顶层禁止取容器——
+    单文件 IIFE 中动态 import 不会推迟模块求值，顶层取容器会在 IndexedDB
+    镜像预热前创建出 localStorage 回退容器（教训 #32）。 */
+let c: Container;
+
+/** 注入组合根容器：任何渲染/事件绑定发生前必须先调用 */
+export function initUi(container: Container): void {
+  c = container;
+}
 
 /* ================= DOM 工具 ================= */
 
