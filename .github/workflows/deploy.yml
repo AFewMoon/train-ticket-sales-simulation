@@ -39,13 +39,22 @@ jobs:
           npm run build
           npm test
 
+      # 站点组装：按仓库根同构布局（index.html + css/ + dist/ 产物），
+      # 使 index.html 中 css/style.css 与 dist/train-ticket-sales.js 的相对引用在线上原样成立
+      - name: Assemble site
+        run: |
+          mkdir -p site
+          cp index.html site/
+          cp -r css site/css
+          cp -r dist site/dist
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'dist'
+          path: 'site'
 
       - name: Deploy to GitHub Pages
         id: deployment
