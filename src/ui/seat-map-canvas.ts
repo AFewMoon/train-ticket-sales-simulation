@@ -18,8 +18,8 @@ function segColor(orderId: string, segIndex: number): string {
 const LABEL_W = 96; // 「座位 N」标签列宽（旧 .seat-row 网格列）
 const GAP = 12; // 标签列与轨道间距
 const TRACK_H = 34; // 轨道高（旧 .seat-track height）
-const ROW_H = TRACK_H + 8; // 行距
-const AXIS_H = 24; // 停站轴高度
+const ROW_H = TRACK_H + 16; // 行距（座位行之间留白 16px，不贴叠）
+const AXIS_H = 30; // 停站轴高度（含与末行的呼吸空间）
 const FONT = '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
 const COLOR_TRACK_BG = '#F8FAFC';
 const COLOR_TRACK_BORDER = '#E2E8F0'; // --line
@@ -205,7 +205,7 @@ function buildTrainBlock(model: TrainSeatMapModel): HTMLElement {
   item.className = 'seat-train';
 
   let head =
-    '<div style="font-weight:700;color:var(--text-2);font-size:13px;">' +
+    '<div class="seat-train-head">' +
     '<span class="badge badge-code-' +
     (model.code[0] ?? 'g').toLowerCase() +
     '">' +

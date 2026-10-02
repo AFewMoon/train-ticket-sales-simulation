@@ -320,7 +320,24 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 .waiting-item .pos { font-weight: 700; color: #B45309; }
 
 /* ============ 座位区间图（Canvas 版） ============ */
-.seat-map { display: flex; flex-direction: column; gap: 14px; }
+.seat-map { display: flex; flex-direction: column; gap: 24px; }
+
+/* 车次块卡片化：与 .card 同视觉语言，多趟车次天然分区留白 */
+.seat-train {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px 10px;
+  box-shadow: var(--shadow);
+}
+
+/* 车次头部徽章行与座位图之间留白 */
+.seat-train-head {
+  margin-bottom: 12px;
+  font-weight: 700;
+  color: var(--text-2);
+  font-size: 13px;
+}
 
 .seat-scroll { overflow-x: auto; padding-bottom: 4px; }
 .seat-inner { min-width: 100%; }
