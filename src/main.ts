@@ -11,7 +11,7 @@ import { createRepository } from './infrastructure/local-storage-repository';
 import { APP_VERSION } from './version';
 import { attachWorkerCompute } from './application/compute-gateway';
 import { purgeNonGDTrains } from './domain/services/reconciliation';
-import { bindAll, initUi, renderAll, switchTab } from './ui/ui';
+import { applySimParamsFromHash, bindAll, initUi, renderAll, switchTab } from './ui/ui';
 
 document.addEventListener('DOMContentLoaded', async () => {
   // 存储升级：await IndexedDB 镜像预热（含 localStorage 旧数据一次性迁移）
@@ -41,5 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   bindAll();
   renderAll();
+  // 链接分享：解析 hash 中的仿真参数回填表单（在 renderAll 之后——依赖线路下拉选项已就绪）
+  applySimParamsFromHash();
   switchTab('sim');
 });

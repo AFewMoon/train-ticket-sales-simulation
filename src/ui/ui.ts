@@ -17,6 +17,7 @@ import type {
 } from './app-state';
 import type { TrainSeatMapModel } from '../application/view-models';
 import { renderTrainSeatMaps } from './seat-map-canvas';
+import { buildSimHash, parseSimHash, type SimLinkParams } from './sim-link';
 
 /** 容器由 main.ts 在存储就绪后注入（initUi）。模块顶层禁止取容器——
     单文件 IIFE 中动态 import 不会推迟模块求值，顶层取容器会在 IndexedDB
@@ -920,23 +921,126 @@ function typeMetaOf(simType: SimType | null): { typeName: string | null; typeBad
   return meta ? { typeName: meta.label, typeBadge: meta.badge } : { typeName: null, typeBadge: null };
 }
 
+/** 仿真表单的读取口径（lineId 为下拉选中的线路 id，runSimulation 直接消费） */
+interface SimFormValues {
+  lineId: string;
+  autoStationCount: number;
+  countDirect: number;
+  countExpress: number;
+  countSkip: number;
+  seats: number;
+  requests: number;
+  seed: number;
+}
+
+/** 读取仿真表单（submit 与复制链接共用，保证两处口径一致）。
+    种子 0 是合法值，不可用 `||` 吞掉（同教训 #10 族：类型/语义陷阱） */
+function readSimForm(): SimFormValues {
+  const seed = Number($('#sim-seed').value);
+  return {
+    lineId: $('#sim-line').value,
+    autoStationCount: Number($('#sim-auto-stations').value) || 10,
+    countDirect: Number($('#sim-count-direct').value) || 0,
+    countExpress: Number($('#sim-count-express').value) || 0,
+    countSkip: Number($('#sim-count-skip').value) || 0,
+    seats: Number($('#sim-seats').value) || 4,
+    requests: Number($('#sim-requests').value) || 10,
+    seed: Number.isFinite(seed) ? Math.floor(seed) : -1
+  };
+}
+
+/** 表单口径 → 链接口径：线路 id 换成名称（id 由 uid() 生成、跨机器不稳定）。
+    线路已不存在时编码原 id，由解析端按「实体存在性校验」降级提示 */
+function toLinkParams(f: SimFormValues): SimLinkParams {
+  return {
+    line: f.lineId === AUTO_LINE_ID ? AUTO_LINE_ID : c.lines.list().find((l) => l.id === f.lineId)?.name ?? f.lineId,
+    autoStationCount: f.autoStationCount,
+    countDirect: f.countDirect,
+    countExpress: f.countExpress,
+    countSkip: f.countSkip,
+    seats: f.seats,
+    requests: f.requests,
+    seed: f.seed
+  };
+}
+
+/** 把 hash 段写入地址栏（同文档替换，不产生历史记录） */
+function syncSimHash(f: SimFormValues): void {
+  try {
+    history.replaceState(null, '', buildSimHash(toLinkParams(f)));
+  } catch {
+    /* file:// 个别环境可能受限，静默降级：链接复制仍可用完整 href */
+  }
+}
+
+/** 剪贴板写入：clipboard API 优先，execCommand 降级（file:// 下可能无异步剪贴板权限） */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** 启动回填：解析 URL hash 中的仿真参数并填入表单（只回填不运行——
+    仿真会写入持久化数据，静默执行违背用户预期）。
+    线路按名称反查 id（id 由 uid() 生成跨机器不稳定，教训 #23：恢复前校验实体存在性），
+    本机不存在同名线路时保留当前选择并提示。 */
+export function applySimParamsFromHash(): void {
+  const p = parseSimHash(location.hash);
+  if (!p) return;
+  let lineValue = '';
+  if (p.line === AUTO_LINE_ID) {
+    lineValue = AUTO_LINE_ID;
+  } else {
+    lineValue = c.lines.list().find((l) => l.name === p.line)?.id ?? '';
+  }
+  if (!lineValue) {
+    toast('链接中的线路「' + p.line + '」在本机不存在，已保留当前选择', 'error');
+  }
+  $('#sim-auto-stations').value = String(p.autoStationCount);
+  $('#sim-count-direct').value = String(p.countDirect);
+  $('#sim-count-express').value = String(p.countExpress);
+  $('#sim-count-skip').value = String(p.countSkip);
+  $('#sim-seats').value = String(p.seats);
+  $('#sim-requests').value = String(p.requests);
+  $('#sim-seed').value = String(p.seed);
+  if (lineValue) $('#sim-line').value = lineValue;
+  syncSimAutoField();
+  toast('已从链接载入仿真参数（种子 ' + p.seed + '），点击「运行仿真」复现', 'success');
+}
+
 function bindSimForm(): void {
   $('#sim-line').addEventListener('change', syncSimAutoField);
+
+  $('#sim-copy-link').addEventListener('click', async () => {
+    const url = location.href.split('#')[0] + buildSimHash(toLinkParams(readSimForm()));
+    const ok = await copyText(url);
+    if (ok) {
+      toast('复现链接已复制：在别处打开后点击「运行仿真」即可同种子复现', 'success');
+    } else {
+      toast('复制失败，请手动复制地址栏链接', 'error');
+    }
+  });
 
   $('#sim-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     let res: SimulationResult;
     try {
-      res = await c.booking.runSimulation({
-        lineId: $('#sim-line').value,
-        autoStationCount: Number($('#sim-auto-stations').value) || 10,
-        countDirect: Number($('#sim-count-direct').value) || 0,
-        countExpress: Number($('#sim-count-express').value) || 0,
-        countSkip: Number($('#sim-count-skip').value) || 0,
-        seats: Number($('#sim-seats').value) || 4,
-        requests: Number($('#sim-requests').value) || 10,
-        seed: Number($('#sim-seed').value)
-      });
+      res = await c.booking.runSimulation(readSimForm());
     } catch (err) {
       toast('仿真失败：' + (err instanceof Error ? err.message : String(err)), 'error');
       return;
@@ -952,6 +1056,8 @@ function bindSimForm(): void {
     };
     // 随机种子（-1）回显实际使用的种子，便于复现
     $('#sim-seed').value = String(res.summary.usedSeed);
+    // 运行成功即把实际生效参数写入地址栏 hash（跑完即得可复现链接）
+    syncSimHash(readSimForm());
     renderSimResults();
     toast(
       '仿真完成（种子 ' +

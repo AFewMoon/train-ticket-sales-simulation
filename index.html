@@ -278,7 +278,11 @@
               <input type="number" id="sim-seed" min="-1" max="2147483647" value="-1" />
               <p class="hint">-1 为随机种子；其余值结果可复现</p>
             </div>
-            <button type="submit" class="btn btn-primary btn-block" id="sim-run">运行仿真</button>
+            <div class="sim-action-row">
+              <button type="submit" class="btn btn-primary" id="sim-run">运行仿真</button>
+              <button type="button" class="btn btn-ghost" id="sim-copy-link">复制复现链接</button>
+            </div>
+            <p class="hint">链接含全部参数与种子，在别处打开会自动回填（车次号随机生成、不参与复现）；指定线路需对方存在同名线路</p>
             <button type="button" class="btn btn-danger-outline btn-block" id="sim-cleanup" style="margin-top: 10px;">清理仿真数据</button>
           </form>
         </div>

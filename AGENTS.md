@@ -209,6 +209,7 @@ localStorage→IndexedDB 升级面对的根本矛盾是 IndexedDB 天然异步�
 18. 退役字头（v3.1）：车次号仅 G/D；注入 K 字头存量（含订单与队列）后启动即被 purgeNonGDTrains 清除，号码池重建后 K 号不复用；随机生成的车次号全部匹配 /^[GD]/。（domain.spec）
 19. 存储架构（v3.2）：`__ttsStorage === 'idb'`（IndexedDB 镜像生效）；数据写入后刷新页面可恢复（IndexedDB 持久化）；localStorage 旧 `tts:*` 数据启动时一次性迁移进 IndexedDB 并清除旧键（镜像非空时跳过，幂等）；防抖窗口内同键多次写合并为一次落盘、落盘失败回滚重试；IndexedDB 不可用回退 localStorage/内存。（idb-mirror.spec + 浏览器冒烟）
 20. 版本标记（v3.2）：`__ttsVersion` 与 package.json 版本一致且为语义化版本；页脚展示 `v<版本号>`；`tts:appVersion` 记录最后写入数据的应用版本（仅变更时写入）；CI 断言 dist 产物内嵌正确版本号。（version.spec + deploy.yml）
+21. 仿真链接复现：仿真 8 项参数编码进 URL hash（`#sim=line=<线路名|__auto__>&auto&gd&ge&gs&seats&req&seed`）——线路按**名称**编码（id 由 uid() 生成跨机器不稳定）；「复制复现链接」按钮一键复制；运行成功后 hash 自动更新为实际种子（-1 随机种子运行后写入 usedSeed）；打开带参链接自动回填表单但不自动运行；线路不存在时保留当前选择并 toast 提示（降级不静默）；seed 非整数/越界整段拒绝；复现口径为统计结果与订单分布（车次号 Math.random 生成、不参与复现）。（sim-link.spec + 浏览器冒烟）
 
 ## 运行
 

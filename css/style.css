@@ -488,6 +488,16 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
   .stat-cards { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* ============ 仿真面板：运行 + 复制链接按钮行 ============ */
+.sim-action-row {
+  display: flex;
+  gap: 10px;
+}
+
+.sim-action-row .btn {
+  flex: 1;
+}
+
 /* ============ 页脚（版本展示） ============ */
 .site-footer {
   max-width: 1280px;
