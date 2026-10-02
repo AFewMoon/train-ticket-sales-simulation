@@ -1,0 +1,21 @@
+{
+  "name": "train-ticket-sales-simulation",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "火车票销售模拟：纯前端单页应用（TypeScript + Vite，IIFE 单文件产物，双击 index.html 即可运行）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "watch": "vite build --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

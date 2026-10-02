@@ -6,6 +6,5 @@
 Thumbs.db
 *.tmp
 
-# 依赖与构建产物（本项目为纯静态，无需）
+# 依赖与构建产物：node_modules 不入库；dist/ 入库以保留「克隆后双击 index.html 即可运行」
 node_modules/
-dist/

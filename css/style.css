@@ -194,6 +194,7 @@ input.is-invalid { border-color: var(--red); }
 .badge-count { background: var(--primary-100); color: var(--primary-700); }
 .badge-issued { background: var(--green-bg); color: var(--green); }
 .badge-waiting { background: var(--amber-bg); color: #B45309; }
+.badge-cancelled { background: var(--gray-100, #F3F4F6); color: var(--gray-500, #6B7280); }
 .badge-code-g { background: var(--red-bg); color: var(--red); }
 .badge-code-d { background: var(--primary-100); color: var(--primary-700); }
 .badge-code-k { background: var(--green-bg); color: var(--green); }
