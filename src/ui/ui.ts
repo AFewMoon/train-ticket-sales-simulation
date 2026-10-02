@@ -14,6 +14,8 @@ import type {
   SimSummaryState,
   TrainDraft
 } from './app-state';
+import type { TrainSeatMapModel } from '../application/view-models';
+import { renderTrainSeatMaps } from './seat-map-canvas';
 
 const c = getContainer();
 
@@ -771,76 +773,10 @@ function renderEventLog(): void {
     .join('');
 }
 
-/* ================= 座位区间图 ================= */
+/* ================= 座位区间图 =================
 
-const SEG_COLORS = ['#2563EB', '#16A34A', '#F59E0B', '#DC2626', '#7C3AED', '#0891B2', '#DB2777', '#65A30D'];
-
-/** 生成单趟车次的座位图 HTML（订单页与仿真结果页共用）；
-    几何定位由应用层 ViewModel 计算，站点多时内部轨道按站数展宽，外层容器左右滑动 */
-function renderTrainSeatMapHtml(model: ReturnType<typeof c.booking.seatMapForTrain>): string {
-  if (!model) return '';
-  let html = '';
-  const S = model.stationCount;
-  const innerMinWidth = Math.max(560, S * 72);
-  html += '<div class="seat-scroll"><div class="seat-inner" style="min-width:' + innerMinWidth + 'px;">';
-
-  // 首行：车次 / 性质 / 线路
-  html +=
-    '<div style="font-weight:700;color:var(--text-2);font-size:13px;">' +
-    '<span class="badge badge-code-' +
-    (model.code[0] ?? 'g').toLowerCase() +
-    '">' +
-    escapeHtml(model.code) +
-    '</span>' +
-    (model.typeName && model.typeBadge
-      ? ' <span class="badge ' + model.typeBadge + '">' + escapeHtml(model.typeName) + '</span>'
-      : '') +
-    (model.lineName ? ' <span class="badge badge-count">' + escapeHtml(model.lineName) + '</span>' : '') +
-    '</div>';
-
-  // 只渲染已占用座位（座位数上限 INT_MAX，不可按 1..N 枚举）；空洞即未售区间
-  model.rows.forEach((row) => {
-    html += '<div class="seat-row"><div class="seat-label">座位 ' + row.seatNo + '</div><div class="seat-track">';
-    row.segs.forEach((seg) => {
-      const color = SEG_COLORS[(seg.orderId.charCodeAt(seg.orderId.length - 1) + seg.segIndex) % SEG_COLORS.length];
-      html +=
-        '<div class="seat-seg" style="left:' +
-        seg.leftPct +
-        '%;width:' +
-        seg.widthPct +
-        '%;background:' +
-        color +
-        ';"' +
-        ' data-tip="' +
-        escapeHtml(seg.fromLabel) +
-        ' → ' +
-        escapeHtml(seg.toLabel) +
-        '">' +
-        escapeHtml(seg.fromLabel) +
-        '→' +
-        escapeHtml(seg.toLabel) +
-        '</div>';
-    });
-    html += '</div></div>';
-  });
-
-  // 停站轴（大站加 ★），置于座位分配之下
-  html += '<div class="seat-axis"><div class="axis-spacer"></div><div class="axis-track">';
-  model.axis.forEach((tick) => {
-    html +=
-      '<span class="axis-tick" style="left:' +
-      tick.align +
-      ';transform:' +
-      tick.transform +
-      ';">' +
-      escapeHtml(tick.label) +
-      '</span>';
-  });
-  html += '</div></div>';
-
-  html += '</div></div>';
-  return html;
-}
+   渲染已迁移至 seat-map-canvas.ts：每个车次一张 Canvas，
+   区间块用 ctx.fillRect 绘制，悬停 tooltip 由命中检测实现。 */
 
 function renderSeatMap(): void {
   const box = $('#seat-map');
@@ -850,8 +786,12 @@ function renderSeatMap(): void {
     box.innerHTML = emptyState('暂无已出票订单，出票后可在此查看每个座位的区间拼接');
     return;
   }
-  const html = c.booking.seatMaps().map(renderTrainSeatMapHtml).join('');
-  box.innerHTML = html || emptyState('暂无已出票订单');
+  const models = c.booking.seatMaps();
+  if (!models.length) {
+    box.innerHTML = emptyState('暂无已出票订单');
+    return;
+  }
+  renderTrainSeatMaps(box, models);
 }
 
 /* ================= 自动仿真面板 ================= */
@@ -950,10 +890,15 @@ function renderSimResults(): void {
   $('#sim-summary-card').hidden = false;
 
   // 按车次分组的座位图
-  const html = s.trains
-    .map((t) => renderTrainSeatMapHtml(c.booking.seatMapForTrain(t)))
-    .join('');
-  $('#sim-seatmap').innerHTML = html || emptyState('本次仿真无出票订单');
+  const models = s.trains
+    .map((t) => c.booking.seatMapForTrain(t))
+    .filter((m): m is TrainSeatMapModel => m !== null);
+  const simBox = $('#sim-seatmap');
+  if (!models.length) {
+    simBox.innerHTML = emptyState('本次仿真无出票订单');
+  } else {
+    renderTrainSeatMaps(simBox, models);
+  }
   $('#sim-seatmap-card').hidden = false;
 }
 

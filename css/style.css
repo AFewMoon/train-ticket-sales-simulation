@@ -319,79 +319,27 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
 }
 .waiting-item .pos { font-weight: 700; color: #B45309; }
 
-/* ============ 座位区间图 ============ */
+/* ============ 座位区间图（Canvas 版） ============ */
 .seat-map { display: flex; flex-direction: column; gap: 14px; }
 
 .seat-scroll { overflow-x: auto; padding-bottom: 4px; }
 .seat-inner { min-width: 100%; }
 
-.seat-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 12px; }
-.seat-label {
-  font-weight: 700;
-  color: var(--primary-700);
-  background: var(--primary-100);
-  border-radius: 8px;
-  padding: 6px 0;
-  text-align: center;
-  font-size: 13px;
-}
+.seat-canvas-wrap { position: relative; }
+.seat-canvas { display: block; }
 
-.seat-track {
-  position: relative;
-  height: 34px;
-  background: #F8FAFC;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-.seat-seg {
+/* 悬停命中检测触发的 tooltip（替代旧 .seat-seg:hover::after 观感） */
+.seat-tip {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
-  border-radius: 6px;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  white-space: nowrap;
-  box-shadow: inset 0 -1px 0 rgba(0,0,0,.12);
-}
-.seat-seg:hover::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  z-index: 5;
   background: var(--text-1);
   color: #fff;
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 11px;
   white-space: nowrap;
-  z-index: 5;
+  pointer-events: none;
 }
-
-.seat-axis {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 12px;
-  margin-top: 4px;
-}
-.seat-axis .axis-track {
-  position: relative;
-  height: 18px;
-}
-.seat-axis .axis-tick {
-  position: absolute;
-  transform: translateX(-50%);
-  font-size: 10px;
-  color: var(--text-3);
-  white-space: nowrap;
-}
-.seat-axis .axis-spacer { }
 
 /* ============ 自动仿真 ============ */
 .sim-grid {
@@ -537,7 +485,5 @@ tbody tr:hover { background: #F8FAFC; box-shadow: 0 4px 12px -8px rgba(15, 23, 4
   .panel-grid, .sim-grid { grid-template-columns: 1fr; }
   .topbar-inner { justify-content: center; }
   .tabs { flex-wrap: wrap; justify-content: center; }
-  .seat-row { grid-template-columns: 72px 1fr; }
-  .seat-axis { grid-template-columns: 72px 1fr; }
   .stat-cards { grid-template-columns: repeat(2, 1fr); }
 }
