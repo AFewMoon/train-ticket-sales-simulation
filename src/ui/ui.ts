@@ -3,6 +3,7 @@
    渲染兜底保留 safe 语义：关联实体缺失/下标越界显示占位文案，绝不输出 undefined/NaN（教训 #22/#23）。 */
 
 import type { Container } from '../container';
+import { APP_VERSION } from '../version';
 import { OrderStatus } from '../domain/model/order';
 import { EVENT_META, isEventType, UNKNOWN_EVENT_META } from '../domain/model/event';
 import { isValidSegment } from '../domain/model/seat-segment';
@@ -25,6 +26,9 @@ let c: Container;
 /** 注入组合根容器：任何渲染/事件绑定发生前必须先调用 */
 export function initUi(container: Container): void {
   c = container;
+  // 页脚版本展示（file:// 直开时肉眼可辨当前构建版本）
+  const el = document.getElementById('app-version');
+  if (el) el.textContent = `v${APP_VERSION}`;
 }
 
 /* ================= DOM 工具 ================= */

@@ -6,7 +6,9 @@
 
 import { initDefaultContainer } from './container';
 import { createBrowserStorageAsync } from './infrastructure/storage';
-import { removeLegacyKeys } from './infrastructure/keys';
+import { KEYS, removeLegacyKeys } from './infrastructure/keys';
+import { createRepository } from './infrastructure/local-storage-repository';
+import { APP_VERSION } from './version';
 import { attachWorkerCompute } from './application/compute-gateway';
 import { purgeNonGDTrains } from './domain/services/reconciliation';
 import { bindAll, initUi, renderAll, switchTab } from './ui/ui';
@@ -19,6 +21,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 移除已退役实体的残留键（教训 #21：全量引用清扫）
   removeLegacyKeys(c.storage);
+
+  // 应用版本落盘：仅在变更时写入，记录「数据最后由哪个版本写入」（与 SEED_VERSION 互补）
+  const versionRepo = createRepository(c.storage, KEYS.appVersion);
+  if (versionRepo.read() !== APP_VERSION) versionRepo.write(APP_VERSION);
 
   // 内置「四纵四横」线路与大/小站标记（仅首次运行种子化一次，版本不匹配自动迁移）
   c.seeder.seedIfEmpty();

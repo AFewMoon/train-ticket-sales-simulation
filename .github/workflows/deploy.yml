@@ -39,6 +39,13 @@ jobs:
           npm run build
           npm test
 
+      # 版本断言：产物必须内嵌 package.json 的版本号（构建期 define 注入）
+      - name: Verify version marker in bundle
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          grep -q "$VERSION" dist/train-ticket-sales.js
+          echo "bundle version ok: $VERSION"
+
       # 站点组装：按仓库根同构布局（index.html + css/ + dist/ 产物），
       # 使 index.html 中 css/style.css 与 dist/train-ticket-sales.js 的相对引用在线上原样成立
       - name: Assemble site

@@ -28,7 +28,10 @@ export const KEYS = {
   queues: def<QueueFile>('tts:queues', { trains: {} }),
   events: def<DomainEvent[]>('tts:events', []),
   seq: def<SeqPool>('tts:seq', { stationNos: [], trainCodes: [] }),
-  seeded: def<string | null>('tts:seeded', null)
+  seeded: def<string | null>('tts:seeded', null),
+  /** 写入数据时的应用版本（package.json，构建期注入）：与 SEED_VERSION 互补，
+      便于「旧数据 + 新代码」组合问题的现场诊断 */
+  appVersion: def<string | null>('tts:appVersion', null)
 } as const;
 
 export type KeyRegistry = typeof KEYS;

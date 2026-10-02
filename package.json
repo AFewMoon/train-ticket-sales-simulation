@@ -1,7 +1,7 @@
 {
   "name": "train-ticket-sales-simulation",
   "private": true,
-  "version": "1.0.0",
+  "version": "3.2.0",
   "type": "module",
   "description": "火车票销售模拟：纯前端单页应用（TypeScript + Vite，IIFE 单文件产物，双击 index.html 即可运行）",
   "scripts": {

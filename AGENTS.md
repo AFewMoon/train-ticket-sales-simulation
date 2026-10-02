@@ -38,7 +38,7 @@ dist/                          # 构建产物（入库，保证克隆后双击�
 - **补丁策略**：`replace-codes`（购票/退票，按 code 整段替换）、`replace-all`（对账，整体重建文件对象以丢弃 legacy 残留键）、`merge-append`（预留，按 createdAt 归并）。仿真补丁还包含「既有候补被兑现」的订单变更（按 id upsert），否则丢失状态更新。
 - **主线程职责**：EngineTransport 构建快照、应用补丁、登记仿真车次到号码池；轻量查询（容量/候补名次/座位图/查询区）保持同步直读，渲染不异步化。
 - **SharedArrayBuffer 被否决的原因**：GitHub Pages 无法设置 COOP/COEP 响应头、file:// 直开无响应头，且 Worker 内无 localStorage，SAB 无法解决持久化共享。
-- **可观测标记**：`globalThis.__ttsCompute` 为 `'worker'`（网关升级成功）或 `'direct'`（默认/降级）；`globalThis.__ttsStorage` 为 `'idb'`（IndexedDB 镜像生效）、`'local'`（降级 localStorage）或 `'memory'`（降级内存），供浏览器回归断言。
+- **可观测标记**：`globalThis.__ttsCompute` 为 `'worker'`（网关升级成功）或 `'direct'`（默认/降级）；`globalThis.__ttsStorage` 为 `'idb'`（IndexedDB 镜像生效）、`'local'`（降级 localStorage）或 `'memory'`（降级内存）；`globalThis.__ttsVersion` 为应用版本号（package.json 单来源，vite/vitest define 构建期注入 `__APP_VERSION__`，组合根 `markVersion()` 登记），供浏览器回归断言与用户问题排查。
 
 ## IndexedDB 存储架构（v3.2）
 
@@ -208,6 +208,7 @@ localStorage→IndexedDB 升级面对的根本矛盾是 IndexedDB 天然异步�
 17. 计算架构：`__ttsCompute === 'worker'`（Worker 生效）；同种子仿真经 Worker 与直算统计一致；Worker postMessage 失效自动降级直算且结果正确；补丁三策略（replace-codes/replace-all/merge-append）合并正确。（engine.spec）
 18. 退役字头（v3.1）：车次号仅 G/D；注入 K 字头存量（含订单与队列）后启动即被 purgeNonGDTrains 清除，号码池重建后 K 号不复用；随机生成的车次号全部匹配 /^[GD]/。（domain.spec）
 19. 存储架构（v3.2）：`__ttsStorage === 'idb'`（IndexedDB 镜像生效）；数据写入后刷新页面可恢复（IndexedDB 持久化）；localStorage 旧 `tts:*` 数据启动时一次性迁移进 IndexedDB 并清除旧键（镜像非空时跳过，幂等）；防抖窗口内同键多次写合并为一次落盘、落盘失败回滚重试；IndexedDB 不可用回退 localStorage/内存。（idb-mirror.spec + 浏览器冒烟）
+20. 版本标记（v3.2）：`__ttsVersion` 与 package.json 版本一致且为语义化版本；页脚展示 `v<版本号>`；`tts:appVersion` 记录最后写入数据的应用版本（仅变更时写入）；CI 断言 dist 产物内嵌正确版本号。（version.spec + deploy.yml）
 
 ## 运行
 

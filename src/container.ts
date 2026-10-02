@@ -20,6 +20,7 @@ import {
   ComputeGatewayHolder,
   DirectComputeGateway
 } from './application/compute-gateway';
+import { markVersion } from './version';
 
 export interface Container {
   storage: StorageLike;
@@ -69,6 +70,7 @@ export function createContainer(storage: StorageLike = createBrowserStorage()): 
     current: new DirectComputeGateway(ticketing, simulation)
   };
   (globalThis as { __ttsCompute?: string }).__ttsCompute = 'direct';
+  markVersion(); // 可观测标记：__ttsVersion（与 __ttsCompute/__ttsStorage 同构）
   const booking = new BookingAppService(ticketing, trains, stations, lines, simulation, compute);
 
   return { storage, transport, compute, stations, lines, trains, numbering, ticketing, seeder, simulation, booking };
