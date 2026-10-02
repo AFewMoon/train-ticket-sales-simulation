@@ -1,6 +1,6 @@
 /* 车次实体与车次号值对象校验。
    车次号规则（教训 #18 语义以停站数约束为准，与本文件无关）：
-   字头 G/D/K + 严格 4 位数字——首位 ∈ {1,2,3,6,7,8}，末位为奇数。 */
+   字头 G/D + 严格 4 位数字——首位 ∈ {1,2,3,6,7,8}，末位为奇数；K 字头已退役。 */
 
 /** 仿真车次类型 */
 export enum SimType {
@@ -9,19 +9,19 @@ export enum SimType {
   Skip = 'skip'
 }
 
-/** 车次号值对象：G/D/K + 4 位数字（首位 1~3/6~8，末位奇数） */
+/** 车次号值对象：G/D + 4 位数字（首位 1~3/6~8，末位奇数）。K 字头已退役（v3.1） */
 export type TrainCode = string;
 
 export const CODE_FIRST_DIGITS = ['1', '2', '3', '6', '7', '8'] as const;
 export const CODE_LAST_DIGITS = ['1', '3', '5', '7', '9'] as const;
-export const CODE_RE = /^[GDK][123678]\d{2}[13579]$/;
+export const CODE_RE = /^[GD][123678]\d{2}[13579]$/;
 
 export function isValidTrainCode(code: unknown): code is TrainCode {
   return typeof code === 'string' && CODE_RE.test(code);
 }
 
 /** 车次字头 */
-export type TrainCodePrefix = 'G' | 'D' | 'K';
+export type TrainCodePrefix = 'G' | 'D';
 
 /** 车次实体（持久化 DTO 与领域模型同形） */
 export interface Train {

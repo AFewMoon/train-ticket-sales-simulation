@@ -63,7 +63,7 @@ export class TrainService {
     if (custom) {
       // 自定义车次号：格式（字头 + 4 位，首位 1~3/6~8、末位奇数）+ 唯一性
       if (!isValidTrainCode(custom)) {
-        return err('车次号格式不正确：需为 G/D/K + 4 位数字（首位 1~3/6~8，末位奇数），如 G1235');
+        return err('车次号格式不正确：需为 G/D + 4 位数字（首位 1~3/6~8，末位奇数），如 G1235');
       }
       const usedCheck = new Set<string>();
       this.list().forEach((t) => usedCheck.add(t.code));
@@ -92,5 +92,22 @@ export class TrainService {
     trains.splice(idx, 1);
     if (!this.trainRepo.write(trains)) return err('保存失败');
     return OK;
+  }
+
+  /**
+   * 按号码集合批量移除车次，连带其全部订单（含已取消历史）——
+   * 仅供启动数据修复（退役字头清理）使用，绕过「有订单禁删」约束，
+   * 因为被移除车次所引用的订单必须一并清除以避免悬空引用。
+   */
+  removeByCodes(codes: readonly string[]): Train[] {
+    if (!codes.length) return [];
+    const codeSet = new Set(codes);
+    const trains = this.list();
+    const removed = trains.filter((t) => codeSet.has(t.code));
+    if (!removed.length) return [];
+    this.trainRepo.write(trains.filter((t) => !codeSet.has(t.code)));
+    const orders = this.orderRepo.read();
+    this.orderRepo.write(orders.filter((o) => !codeSet.has(o.trainCode)));
+    return removed;
   }
 }

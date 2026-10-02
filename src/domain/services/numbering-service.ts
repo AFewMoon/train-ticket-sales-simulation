@@ -116,8 +116,9 @@ export class NumberingService {
     const used = new Set<string>();
     this.trainRepo.read().forEach((t) => used.add(t.code));
     this.seq.trainCodes.forEach((c) => used.add(c));
+    // 字头池 G/D 等概率（K 字头已退役，v3.1）
     const prefixes: string[] =
-      prefix && /^[GDK]$/.test(prefix) ? [prefix] : ['G', 'D', 'K'];
+      prefix && /^[GD]$/.test(prefix) ? [prefix] : ['G', 'D'];
     for (let attempt = 0; attempt < 5000; attempt++) {
       const p = prefixes[Math.floor(Math.random() * prefixes.length)] ?? 'G';
       const code = p + randomCodeNumber();

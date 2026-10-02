@@ -173,7 +173,7 @@ Vite 的 `?worker&inline` 可把 Worker 内联为 base64 blob（`worker.format: 
 > 1~13、15~17 项已有 Vitest 自动化覆盖（tests/*.spec.ts，45 用例；其中 Worker 路径经 FakeWorker 回环验证），浏览器端仅做冒烟与渲染回归。
 
 1. 登记车站 → 号码唯一且随机；重复中文名被拒。（domain.spec：含 600 站号码唯一压测）
-2. 登记车次 → 站序 < 2 站或重复被拒；自定义车次号格式（首位 1~3/6~8、末位奇数）非法或重复被拒，留空随机生成。（domain.spec）
+2. 登记车次 → 站序 < 2 站或重复被拒；自定义车次号格式（**仅 G/D 字头** + 4 位数字，首位 1~3/6~8、末位奇数）非法或重复被拒，留空随机生成（G/D 等概率）；**启动时自动清理非 G/D 字头的存量车次（连带订单含取消历史与候补队列条目）**。（domain.spec）
 3. 挂接线路：乱序站序被拒，正序子序列通过；挂线后途经站候选随路线成形单调收缩；删除被挂接线路被拒。（domain.spec）
 4. 购票：区间适配无空闲座位 → 候补；退票释放区间 → 候补按时间戳自动补录；**退票/取消保留订单为 CANCELLED 且不参与占用统计，重复退票被拒**。（ticketing.spec）
 5. 刷新页面 → 数据持久化；座位图展示票段分布（空洞为未售区间）。
@@ -189,6 +189,7 @@ Vite 的 `?worker&inline` 可把 Worker 内联为 base64 blob（`worker.format: 
 15. 部署：push master → Actions 先 `npm run build && npm test` 再经官方 Pages 链路发布 dist（deploy-pages），远端无 gh-pages 等部署分支。
 16. 旧数据兼容：legacy 队列 `{buckets}` 结构对账废弃重建；旧 `'waiting'/'issued'` 状态字符串直读兼容；退票后落盘 `'cancelled'`。（migration.spec）
 17. 计算架构：`__ttsCompute === 'worker'`（Worker 生效）；同种子仿真经 Worker 与直算统计一致；Worker postMessage 失效自动降级直算且结果正确；补丁三策略（replace-codes/replace-all/merge-append）合并正确。（engine.spec）
+18. 退役字头（v3.1）：车次号仅 G/D；注入 K 字头存量（含订单与队列）后启动即被 purgeNonGDTrains 清除，号码池重建后 K 号不复用；随机生成的车次号全部匹配 /^[GD]/。（domain.spec）
 
 ## 运行
 
