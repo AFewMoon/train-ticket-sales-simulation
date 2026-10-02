@@ -1,6 +1,6 @@
 # AGENTS.md — 项目说明与经验教训
 
-《火车票销售模拟》：纯前端单页应用（**TypeScript + Vite（IIFE 单文件产物）** + localStorage），双击 `index.html` 或任意静态服务即可运行；核心算法由 Vitest 单测覆盖。
+《火车票销售模拟》：纯前端单页应用（**TypeScript + Vite（IIFE 单文件产物）** + localStorage），双击 `index.html` 或任意静态服务即可运行；**重度计算（出票/补录/退票/批量仿真/对账）运行于 Web Worker，失效自动降级主线程直算**；核心算法由 Vitest 单测覆盖。
 
 ## 项目结构
 
@@ -11,20 +11,33 @@ src/main.ts                    # 启动链：种子化 → 对账 → 号码池�
 src/container.ts               # 组合根：依赖装配，方向严格单向
 src/domain/model/              # OrderStatus/EventType/SimType 枚举、SeatSegment/StationNo
                                #   值对象、Order 实体类（状态迁移收口）
+src/domain/engine/             # 纯函数计算引擎（快照进/补丁出）：ticketing/simulation/
+                               #   protocol（快照/补丁/Worker 消息契约）/dispatch（RPC 调度）
 src/domain/repository.ts       # IRepository<T> 存储契约（domain 定义，infra 实现）
-src/domain/services/           # Station/Line/Train/Numbering/Ticketing 领域服务 + reconciliation 对账
+src/domain/services/           # Station/Line/Train/Numbering/Ticketing 领域服务（持久化收口）+ 对账
 src/infrastructure/            # 强类型 KeyRegistry、泛型 LocalStorageRepository<T>、
                                #   BatchScope 批量事务缓冲、OrderRepository 实体映射
-src/application/               # SimulationService 仿真、BookingAppService 用例编排（含退票模拟）、
-                               #   BuiltinSeeder 种子自愈、view-models UI 渲染就绪数据
-src/ui/                        # 视图层：渲染、下拉联动、事件绑定（只消费 ViewModel）
-tests/                         # Vitest 单测（37 用例，内存存储隔离容器）
+src/workers/engine.worker.ts   # 计算引擎 Worker 入口（?worker&inline 内联 blob，IIFE 自包含）
+src/application/               # SimulationService 仿真、BookingAppService 用例编排、
+                               #   ComputeGateway（Worker/直算双路径 + 失效自动降级）、
+                               #   EngineTransport（快照构建/补丁落盘）、BuiltinSeeder、view-models
+src/ui/                        # 视图层：渲染、下拉联动、事件绑定（只消费 ViewModel，await 网关结果）
+tests/                         # Vitest 单测（45 用例，内存存储隔离容器；FakeWorker 回环验证 Worker 路径）
 dist/                          # 构建产物（入库，保证克隆后双击可用）
 ```
 
-分层约定与依赖方向：`ui → application → domain ← infrastructure`（依赖倒置）；`ui` 只操作 DOM 与事件、只消费应用层 ViewModel；业务规则全部在 `domain/services`；持久化只经 `infrastructure` 的泛型仓库（每个 key 绑定唯一 DTO 类型与 fallback）。
+分层约定与依赖方向：`ui → application → domain ← infrastructure`（依赖倒置）；`ui` 只操作 DOM 与事件、只消费应用层 ViewModel、await 网关结果后渲染；业务规则全部在 `domain/engine`（纯算法）与 `domain/services`（持久化收口）；持久化只经 `infrastructure` 的泛型仓库。计算路径：`ComputeGateway` 接口的两个实现——`WorkerComputeGateway`（postMessage 快照 → Worker 引擎 → 补丁 → 落盘）与 `DirectComputeGateway`（主线程直算同一引擎）；Worker 构造失败或运行失效（onerror/postMessage 异常）自动降级直算，两条路径由同一套等价测试覆盖。
 
-构建与验证：`npm run build`（tsc strict + Vite 产物）、`npm test`（Vitest）。CI（deploy.yml）在发布前先跑构建与单测。
+构建与验证：`npm run build`（tsc strict + Vite 产物，Worker 以 `?worker&inline` 内联为 blob，保持单文件自包含与 file:// 可直开）、`npm test`（Vitest）。CI（deploy.yml）在发布前先跑构建与单测。
+
+## Web Worker 计算架构（v3.0）
+
+- **纯函数引擎**（`domain/engine`）：算法核心为「快照进（纯 DTO）→ 补丁出（orders 按 id upsert + 队列按策略合并 + 新增事件）」，无仓库/DOM 依赖，Worker 与主线程共用同一实现——这是双路径行为等价与可测试性的根基。
+- **消息协议**：`EngineRequest/EngineResponse` 封包；单次购票/退票只传该车次快照（train + 该车次订单 + 该车次队列），批量运算（退票模拟/对账/仿真）传全量快照，降低结构化克隆开销。
+- **补丁策略**：`replace-codes`（购票/退票，按 code 整段替换）、`replace-all`（对账，整体重建文件对象以丢弃 legacy 残留键）、`merge-append`（预留，按 createdAt 归并）。仿真补丁还包含「既有候补被兑现」的订单变更（按 id upsert），否则丢失状态更新。
+- **主线程职责**：EngineTransport 构建快照、应用补丁、登记仿真车次到号码池；轻量查询（容量/候补名次/座位图/查询区）保持同步直读，渲染不异步化。
+- **SharedArrayBuffer 被否决的原因**：GitHub Pages 无法设置 COOP/COEP 响应头、file:// 直开无响应头，且 Worker 内无 localStorage，SAB 无法解决持久化共享。
+- **可观测标记**：`globalThis.__ttsCompute` 为 `'worker'`（网关升级成功）或 `'direct'`（默认/降级），供浏览器回归断言。
 
 ## 核心业务规则
 
@@ -139,9 +152,25 @@ TS 化出票引擎时，测试里把 4 站车次的"全程购票"写成 `purchas
 
 本次将 7 个 IIFE 全局模块迁移为 TS 分层（约 2000 行）零行为回归，依赖三个顺序：先补齐 Vitest 行为用例（含旧数据迁移/幂等对账等"隐藏规约"）再动手；迁移中逐函数对照旧实现（保留算法注释与教训编号）；迁移后用固定种子做同种子复现断言 + msedge 浏览器全流程回归。教训：**无测试的遗留代码先写测试再重构是老生常谈，但关键增量是"把历史教训（#6/#10/#16/#20/#23）逐一转化为断言"——教训清单本身就是隐藏需求规格。**
 
+### 27. 「先提取纯函数引擎，再上 Worker」是异步化的安全顺序
+
+把同步算法直接改造成 Worker RPC 很容易把持久化读写与计算搅在一起、产生两套行为。本次先在主线程内把算法提取为「快照进/补丁出」的纯函数（Service 变薄包装，原 37 个单测不改断言全部通过），然后 Worker 只是给同一引擎换了个运行位置——回环测试（FakeWorker 走完整 RPC → 补丁落盘 → 与直算对比）得以在 node 环境覆盖 Worker 代码路径。教训：**Worker 化的本质约束是"计算必须与 I/O 分离"；先做纯函数化提取并用等价测试锁定行为，再把纯函数搬进 Worker，每一步都可验证。**
+
+### 28. 补丁协议要覆盖"既有数据被计算波及"的变更，而非只传新增数据
+
+仿真批次的补录会兑现快照中**既有的**候补订单并使其队列条目出队——最初补丁只含新增订单与新增候补条目，落盘后既有订单的状态更新与队列删除全部丢失（仅靠下次对账自愈掩盖）。修复：补丁按「受影响实体全量 upsert（按 id）+ 受影响队列整段替换」表达，仿真还回传号码池登记。教训：**设计快照/补丁协议时，穷举引擎会触碰哪些既有数据（不只是新增），补丁粒度要么"按 id upsert"要么"受影响集合整段替换"，绝不做"只传增量"的隐式假设。**
+
+### 29. `?worker&inline` + 动态 import，让 Worker 进 IIFE 单文件且不污染测试环境
+
+Vite 的 `?worker&inline` 可把 Worker 内联为 base64 blob（`worker.format: 'iife'`），IIFE 主产物保持 file:// 可直开；但顶层静态 import 会让 node 环境的 Vitest 在加载容器时就触碰 Worker 模块。改为在 `attachWorkerCompute`（仅 main.ts 调用）里动态 import + 构造探测（probe.terminate()），失败静默保持直算网关——测试环境天然走直算路径，浏览器入口才升级 Worker。教训：**平台相关模块（Worker/localStorage/IntersectionObserver…）用"动态 import + 运行时探测 + 可降级默认实现"三件套隔离，组合根只持有可替换的抽象。**
+
+### 30. 补丁落盘函数的"统一收尾写回"会覆盖分支内的整体替换
+
+`applyPatchToStore` 在开头 `const q = store.getQueues()`、各分支修改 `q`、末尾无条件 `saveQueues(q)`——`replace-all` 分支先保存了重建的新文件对象，末尾又把**旧对象**整体写了回去，legacy 残留键与悬空条目因此"复活"（且仅在 legacy 测试与悬空测试中同时现形）。修复：replace-all 分支直接 return，其余分支共享局部可变对象。教训：**「先取值、分支修改、统一写回」的函数里，任何"整体替换"分支都必须提前返回或改写同一引用；这类 bug 会被"对账自愈"机制掩盖成偶发问题，测试要对新旧两代持久化形状分别断言。**
+
 ## 验证清单（回归测试用）
 
-> 1~13、15 项已有 Vitest 自动化覆盖（tests/*.spec.ts），浏览器端仅做冒烟与渲染回归。
+> 1~13、15~17 项已有 Vitest 自动化覆盖（tests/*.spec.ts，45 用例；其中 Worker 路径经 FakeWorker 回环验证），浏览器端仅做冒烟与渲染回归。
 
 1. 登记车站 → 号码唯一且随机；重复中文名被拒。（domain.spec：含 600 站号码唯一压测）
 2. 登记车次 → 站序 < 2 站或重复被拒；自定义车次号格式（首位 1~3/6~8、末位奇数）非法或重复被拒，留空随机生成。（domain.spec）
@@ -159,6 +188,7 @@ TS 化出票引擎时，测试里把 4 站车次的"全程购票"写成 `purchas
 14. 首页初始即「自动仿真」标签（HTML 初始状态 + JS 双保险）。
 15. 部署：push master → Actions 先 `npm run build && npm test` 再经官方 Pages 链路发布 dist（deploy-pages），远端无 gh-pages 等部署分支。
 16. 旧数据兼容：legacy 队列 `{buckets}` 结构对账废弃重建；旧 `'waiting'/'issued'` 状态字符串直读兼容；退票后落盘 `'cancelled'`。（migration.spec）
+17. 计算架构：`__ttsCompute === 'worker'`（Worker 生效）；同种子仿真经 Worker 与直算统计一致；Worker postMessage 失效自动降级直算且结果正确；补丁三策略（replace-codes/replace-all/merge-append）合并正确。（engine.spec）
 
 ## 运行
 

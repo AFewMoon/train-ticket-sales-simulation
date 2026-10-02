@@ -1,5 +1,7 @@
 /* 组合根：按依赖方向单向装配（ui → application → domain ← infrastructure）。
-   测试可传入 InMemoryStorage 创建隔离容器；浏览器默认 localStorage。 */
+   测试可传入 InMemoryStorage 创建隔离容器；浏览器默认 localStorage。
+   计算网关默认为主线程直算（DirectComputeGateway）；浏览器入口经
+   attachWorkerCompute 尝试升级为 Web Worker（失败自动保持直算）。 */
 
 import { createBrowserStorage, type StorageLike } from './infrastructure/storage';
 import { KEYS } from './infrastructure/keys';
@@ -13,9 +15,17 @@ import { TicketingService } from './domain/services/ticketing-service';
 import { BuiltinSeeder } from './application/builtin-seeder';
 import { SimulationService } from './application/simulation-service';
 import { BookingAppService } from './application/booking-app-service';
+import { EngineTransport } from './application/engine-transport';
+import {
+  ComputeGatewayHolder,
+  DirectComputeGateway
+} from './application/compute-gateway';
 
 export interface Container {
   storage: StorageLike;
+  transport: EngineTransport;
+  /** 计算网关持有者：main.ts 启动时可替换为 Worker 实现 */
+  compute: ComputeGatewayHolder;
   stations: StationService;
   lines: LineService;
   trains: TrainService;
@@ -30,7 +40,8 @@ export function createContainer(storage: StorageLike = createBrowserStorage()): 
   const stationRepo = createRepository(storage, KEYS.stations);
   const lineRepo = createRepository(storage, KEYS.lines);
   const trainRepo = createRepository(storage, KEYS.trains);
-  const orderRepo = new OrderRepository(createRepository(storage, KEYS.orders));
+  const orderDtoRepo = createRepository(storage, KEYS.orders);
+  const orderRepo = new OrderRepository(orderDtoRepo);
   const queueRepo = createRepository(storage, KEYS.queues);
   const eventRepo = createRepository(storage, KEYS.events);
   const seqRepo = createRepository(storage, KEYS.seq);
@@ -53,9 +64,14 @@ export function createContainer(storage: StorageLike = createBrowserStorage()): 
     ticketing,
     numbering
   );
-  const booking = new BookingAppService(ticketing, trains, stations, lines);
+  const transport = new EngineTransport(trainRepo, orderDtoRepo, queueRepo, eventRepo, numbering);
+  const compute: ComputeGatewayHolder = {
+    current: new DirectComputeGateway(ticketing, simulation)
+  };
+  (globalThis as { __ttsCompute?: string }).__ttsCompute = 'direct';
+  const booking = new BookingAppService(ticketing, trains, stations, lines, simulation, compute);
 
-  return { storage, stations, lines, trains, numbering, ticketing, seeder, simulation, booking };
+  return { storage, transport, compute, stations, lines, trains, numbering, ticketing, seeder, simulation, booking };
 }
 
 let defaultContainer: Container | null = null;

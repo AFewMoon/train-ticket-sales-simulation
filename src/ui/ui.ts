@@ -6,7 +6,7 @@ import { getContainer } from '../container';
 import { OrderStatus } from '../domain/model/order';
 import { EVENT_META, isEventType, UNKNOWN_EVENT_META } from '../domain/model/event';
 import { isValidSegment } from '../domain/model/seat-segment';
-import { AUTO_LINE_ID, TYPE_META, typeOfTrain } from '../application/simulation-service';
+import { AUTO_LINE_ID, TYPE_META, typeOfTrain, type SimulationResult } from '../application/simulation-service';
 import type { SimType } from '../domain/model/train';
 import type {
   LineDraft,
@@ -635,7 +635,7 @@ function bindBookingForm(): void {
     renderToOptions(true);
   });
 
-  $('#booking-form').addEventListener('submit', (e) => {
+  $('#booking-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const code = $('#booking-train').value;
     const fromIdx = Number($('#booking-from').value);
@@ -648,15 +648,20 @@ function bindBookingForm(): void {
       toast('请选择合法乘车区间', 'error');
       return;
     }
-    const res = c.booking.purchase(code, fromIdx, toIdx);
-    if (!res.ok) {
-      toast(res.msg, 'error');
+    try {
+      const res = await c.booking.purchase(code, fromIdx, toIdx);
+      if (!res.ok) {
+        toast(res.msg, 'error');
+        return;
+      }
+      if (res.issued) {
+        toast('出票成功！座位号：' + res.seatNo, 'success');
+      } else {
+        toast('暂无合适组合，订单进入候补等待（第 ' + res.position + ' 位）', 'info');
+      }
+    } catch (err) {
+      toast('购票失败：' + (err instanceof Error ? err.message : String(err)), 'error');
       return;
-    }
-    if (res.issued) {
-      toast('出票成功！座位号：' + res.seatNo, 'success');
-    } else {
-      toast('暂无合适组合，订单进入候补等待（第 ' + res.position + ' 位）', 'info');
     }
     renderAll();
   });
@@ -707,17 +712,22 @@ function renderOrders(): void {
 }
 
 function bindOrderRefund(): void {
-  $('#order-table-wrap').addEventListener('click', (e) => {
+  $('#order-table-wrap').addEventListener('click', async (e) => {
     const btn = closestTarget(e, '[data-refund-order]');
     if (!btn) return;
     const id = btn.getAttribute('data-refund-order') ?? '';
     if (!confirmAction('确认退票 / 取消该订单？座位区间将释放并自动触发候补兑现。')) return;
-    const res = c.booking.refundOrder(id);
-    if (!res.ok) {
-      toast(res.msg, 'error');
+    try {
+      const res = await c.booking.refundOrder(id);
+      if (!res.ok) {
+        toast(res.msg, 'error');
+        return;
+      }
+      toast(res.fulfilled > 0 ? '退票成功，候补兑现 ' + res.fulfilled + ' 单' : '退票成功', 'success');
+    } catch (err) {
+      toast('退票失败：' + (err instanceof Error ? err.message : String(err)), 'error');
       return;
     }
-    toast(res.fulfilled > 0 ? '退票成功，候补兑现 ' + res.fulfilled + ' 单' : '退票成功', 'success');
     renderAll();
   });
 }
@@ -956,18 +966,24 @@ function typeMetaOf(simType: SimType | null): { typeName: string | null; typeBad
 function bindSimForm(): void {
   $('#sim-line').addEventListener('change', syncSimAutoField);
 
-  $('#sim-form').addEventListener('submit', (e) => {
+  $('#sim-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const res = c.simulation.runSimulation({
-      lineId: $('#sim-line').value,
-      autoStationCount: Number($('#sim-auto-stations').value) || 10,
-      countDirect: Number($('#sim-count-direct').value) || 0,
-      countExpress: Number($('#sim-count-express').value) || 0,
-      countSkip: Number($('#sim-count-skip').value) || 0,
-      seats: Number($('#sim-seats').value) || 4,
-      requests: Number($('#sim-requests').value) || 10,
-      seed: Number($('#sim-seed').value)
-    });
+    let res: SimulationResult;
+    try {
+      res = await c.booking.runSimulation({
+        lineId: $('#sim-line').value,
+        autoStationCount: Number($('#sim-auto-stations').value) || 10,
+        countDirect: Number($('#sim-count-direct').value) || 0,
+        countExpress: Number($('#sim-count-express').value) || 0,
+        countSkip: Number($('#sim-count-skip').value) || 0,
+        seats: Number($('#sim-seats').value) || 4,
+        requests: Number($('#sim-requests').value) || 10,
+        seed: Number($('#sim-seed').value)
+      });
+    } catch (err) {
+      toast('仿真失败：' + (err instanceof Error ? err.message : String(err)), 'error');
+      return;
+    }
     if (!res.ok) {
       toast(res.msg, 'error');
       return;
@@ -1137,7 +1153,7 @@ function bindQueryControls(): void {
 /* ================= 退票模拟（业务已下沉至 BookingAppService.refundSimulation） ================= */
 
 function bindRefundSim(): void {
-  $('#refund-sim-btn').addEventListener('click', () => {
+  $('#refund-sim-btn').addEventListener('click', async () => {
     const rate = Number($('#refund-rate').value);
     if (!isFinite(rate) || rate < 1 || rate > 100) {
       toast('退票比率需在 1-100 之间', 'error');
@@ -1147,12 +1163,17 @@ function bindRefundSim(): void {
       toast('当前没有已出票订单', 'info');
       return;
     }
-    const res = c.booking.refundSimulation(rate);
-    if (!res.ok) {
-      toast(res.msg, 'error');
+    try {
+      const res = await c.booking.refundSimulation(rate);
+      if (!res.ok) {
+        toast(res.msg, 'error');
+        return;
+      }
+      toast('退票模拟：退 ' + res.refunded + ' 张，候补补录 ' + res.fulfilled + ' 单', 'success');
+    } catch (err) {
+      toast('退票模拟失败：' + (err instanceof Error ? err.message : String(err)), 'error');
       return;
     }
-    toast('退票模拟：退 ' + res.refunded + ' 张，候补补录 ' + res.fulfilled + ' 单', 'success');
     renderAll();
   });
 }

@@ -3,7 +3,7 @@
 一个**纯前端**（HTML5 + CSS3 + **TypeScript**，Vite 构建为 IIFE 单文件产物）的火车票销售模拟网站：
 先登记基础数据（车站、线路、车次），再进行购票下单。系统按**「逐单区间适配」**规则自动出票：候补按时间戳升序逐单补录到区间空闲的座位（允许空洞，最大化座位利用率），并以彩色座位区间图直观呈现每个座位的票段分布。
 
-代码采用**领域驱动设计（DDD）分层**：`domain`（实体/值对象/领域服务，含 `OrderStatus` 枚举与 `SeatSegment` 值对象）← `infrastructure`（泛型 `IRepository<T>` + localStorage 实现）← `application`（仿真/购票用例编排）← `ui`（仅 DOM 与事件）。核心算法由 **Vitest** 单测覆盖（37 个用例）。
+代码采用**领域驱动设计（DDD）分层**：`domain`（实体/值对象/领域服务，含 `OrderStatus` 枚举与 `SeatSegment` 值对象）← `infrastructure`（泛型 `IRepository<T>` + localStorage 实现）← `application`（仿真/购票用例编排）← `ui`（仅 DOM 与事件）。**重度计算（出票算法、批量仿真/退票模拟/对账）运行于 Web Worker**：主线程经 async 网关发送数据快照、接收结果与补丁并落盘渲染；Worker 不可用时自动回退主线程直算（同一套纯函数引擎，行为等价）。核心算法由 **Vitest** 单测覆盖（45 个用例）。
 
 所有数据保存在浏览器 `localStorage`，双击 `index.html` 即可离线使用。
 
@@ -27,6 +27,8 @@
 ## 出票算法（逐单区间适配 · 在线补录）
 
 > **规则**：候补订单按创建时间（createdAt）**升序逐单尝试补录**——只要某个座位的目标区间 `[起点, 终点)` 完全空闲，该订单即出票到该座位。座位允许存在空洞，**最大化座位利用率**。
+>
+> **计算架构（v3.0 起）**：出票/补录/退票/批量仿真等算法提取为**纯函数引擎**（快照进、补丁出），默认运行在 **Web Worker**（`postMessage` 结构化克隆：单次购票/退票只传该车次数据，批量运算传全量）；Worker 创建失败或运行中失效时**自动降级**为主线程直算，行为完全一致。选择 postMessage 而非 SharedArrayBuffer：GitHub Pages 无法配置 COOP/COEP 响应头，file:// 直开更无响应头可言。
 
 - **在线机制**：候补队列按车次持久化（`tts:queues`，单条时戳有序列表），新订单 O(log W) 入队、出票 O(1) 出队；每次购票/退票仅对相关车次做一次补录扫描。
 - **时戳补录**：先到的订单优先挑选座位；退票释放区间后，剩余候补立即按时间戳重新尝试填补，座位零空转。
@@ -37,6 +39,7 @@
 
 ## 版本
 
+- **v3.0.0** — 引入 Web Worker 分离重度计算：出票算法与批量生成提取为纯函数引擎迁入 Worker（postMessage 快照/补丁协议、按车次快照减小拷贝、失效自动降级直算），主线程只负责发请求与渲染
 - **v2.0.0** — 全面 TypeScript 化与 DDD 重构：严格枚举（`OrderStatus`/`SimType`/`EventType`）与值对象（`SeatSegment`/`StationNo`）、泛型 `IRepository<T>` 存储层、实体/领域服务/应用层/UI 四层分离、退票改「取消状态」保留订单历史、Vitest 单测覆盖领域层
 - **v1.0.0** — 逐单区间适配出票、在线候补补录、三类仿真车次、数据查询区、退票模拟与事件时间线
 - **v0.2.0** — 四纵四横完整站表、自动仿真页、GitHub Pages 部署
@@ -82,12 +85,17 @@ python -m http.server 8931
 │   ├── domain/
 │   │   ├── model/                 # OrderStatus/EventType/SimType 枚举、SeatSegment/StationNo
 │   │   │   │                      #   值对象、Order 实体类（状态迁移收口）、实体接口
+│   │   ├── engine/                # 纯函数计算引擎（快照进/补丁出）：出票/仿真/对账、
+│   │   │   │                      #   引擎协议（快照/补丁/Worker 消息）、RPC 调度器
 │   │   ├── repository.ts          # IRepository<T> 存储契约（domain 侧定义）
-│   │   └── services/              # Station/Line/Train/Numbering/Ticketing 领域服务 + 对账
+│   │   └── services/              # Station/Line/Train/Numbering/Ticketing 领域服务（持久化收口）+ 对账
 │   ├── infrastructure/            # 强类型 KeyRegistry、泛型 LocalStorageRepository<T>、
 │   │   │                          #   批量事务缓冲、Order 实体映射仓库
 │   │   └── persistence-shapes.ts  # 候补队列/号码池持久化形状（含旧结构探测）
-│   ├── application/               # 仿真引擎、购票用例编排（退票模拟下沉）、内置种子、
+│   ├── workers/
+│   │   └── engine.worker.ts       # 计算引擎 Worker 入口（?worker&inline 内联 blob，IIFE 自包含）
+│   ├── application/               # 仿真编排、购票用例编排、计算网关（Worker/直算双路径 +
+│   │   │                          #   自动降级）、引擎传输层（快照构建/补丁落盘）、内置种子、
 │   │   │                          #   ViewModel（UI 渲染就绪数据）
 │   │   └── builtin-seeder.ts      # 内置「四纵四横」站表（SEED_VERSION 幂等自愈）
 │   └── ui/                        # 视图层：渲染、联动、事件（只消费应用层 ViewModel）
@@ -103,9 +111,12 @@ python -m http.server 8931
 ```mermaid
 flowchart LR
     UI[src/ui 视图层] --> APP[src/application 应用层]
-    APP --> SVC[src/domain/services 领域服务]
+    APP --> GW[ComputeGateway 计算网关]
+    GW -->|postMessage 快照/补丁| WK[engine.worker 计算引擎]
+    GW -->|回退直算| SVC[src/domain/services 领域服务]
+    WK --> ENG[src/domain/engine 纯函数引擎]
+    SVC --> ENG
     SVC --> VO[src/domain/model 实体/枚举/值对象]
-    APP --> SIM[SimulationService 仿真引擎]
     SVC -.依赖倒置.-> IREP[IRepository&lt;T&gt; 契约]
     REPO[src/infrastructure 泛型仓库] --> IREP
     REPO --> LS[(localStorage tts:*)]

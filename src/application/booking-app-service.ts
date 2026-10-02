@@ -1,4 +1,5 @@
-/* 购票应用服务：购票/退票/退票模拟用例编排 + UI 渲染就绪 ViewModel 计算。
+/* 购票应用服务：购票/退票/退票模拟/仿真用例编排 + UI 渲染就绪 ViewModel 计算。
+   重度计算经 ComputeGateway 发起（Web Worker 优先，主线程直算回退）；
    原 ui.js 中的业务计算（退票模拟、座位图几何、候补名次、区间覆盖查询）全部下沉至此，
    UI 层只消费本服务返回的视图数据（教训 #5：分层让验证与修错成本大幅降低）。 */
 
@@ -7,11 +8,14 @@ import type { LineService } from '../domain/services/line-service';
 import type { TrainService } from '../domain/services/train-service';
 import type { TicketingService, PurchaseResult, RefundResult } from '../domain/services/ticketing-service';
 import { groupBySeat } from '../domain/services/ticketing-service';
-import { OrderStatus, type Order } from '../domain/model/order';
+import { OrderStatus } from '../domain/model/order';
 import { coversSegment } from '../domain/model/seat-segment';
 import { isMajorStation } from '../domain/model/line';
 import { SimType, type Train } from '../domain/model/train';
-import { TYPE_META, typeOfTrain } from './simulation-service';
+import { TYPE_META, typeOfTrain, type SimulationResult } from './simulation-service';
+import type { SimulationService } from './simulation-service';
+import type { SimulationConfig } from '../domain/engine/protocol';
+import type { ComputeGatewayHolder } from './compute-gateway';
 import type {
   CapacityHintView,
   OrderRowView,
@@ -42,15 +46,19 @@ export class BookingAppService {
     private readonly ticketing: TicketingService,
     private readonly trains: TrainService,
     private readonly stations: StationService,
-    private readonly lines: LineService
+    private readonly lines: LineService,
+    private readonly simulation: SimulationService,
+    private readonly compute: ComputeGatewayHolder
   ) {}
 
-  purchase(trainCode: string, fromIdx: number, toIdx: number): PurchaseResult {
-    return this.ticketing.purchase(trainCode, fromIdx, toIdx);
+  /** 购票：重度计算经网关发起（Worker 优先），补丁落盘后返回结果 */
+  async purchase(trainCode: string, fromIdx: number, toIdx: number): Promise<PurchaseResult> {
+    return this.compute.current.purchase(trainCode, fromIdx, toIdx);
   }
 
-  refundOrder(orderId: string): RefundResult {
-    return this.ticketing.refundOrder(orderId);
+  /** 退票 / 取消候补（CANCELLED 语义） */
+  async refundOrder(orderId: string): Promise<RefundResult> {
+    return this.compute.current.refundOrder(orderId);
   }
 
   hasIssuedOrders(): boolean {
@@ -58,31 +66,21 @@ export class BookingAppService {
   }
 
   /**
-   * 退票模拟（原 ui.js bindRefundSim 业务下沉）：
-   * 按比率随机抽单退票，refundOrder 内部自动按时间戳补录候补。
+   * 退票模拟：按比率随机抽单退票，候补自动按时间戳补录。
+   * 批量运算经网关发起（Worker 内全内存完成，主线程只收补丁）。
    */
-  refundSimulation(ratePercent: number): { ok: false; msg: string } | { ok: true; refunded: number; fulfilled: number } {
-    const rate = Number(ratePercent);
-    if (!isFinite(rate) || rate < 1 || rate > 100) return { ok: false, msg: '退票比率需在 1-100 之间' };
-    const issued = this.ticketing.currentOrders().filter((o) => o.status === OrderStatus.ISSUED);
-    const count = Math.max(1, Math.round((issued.length * rate) / 100));
-    // Fisher-Yates 随机抽取不重复的订单逐张退票
-    for (let i = issued.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = issued[i] as Order;
-      issued[i] = issued[j] as Order;
-      issued[j] = tmp;
-    }
-    let refunded = 0;
-    let fulfilled = 0;
-    for (let k = 0; k < count && k < issued.length; k++) {
-      const r = this.ticketing.refundOrder((issued[k] as Order).id);
-      if (r.ok) {
-        refunded++;
-        fulfilled += r.fulfilled;
-      }
-    }
-    return { ok: true, refunded, fulfilled };
+  async refundSimulation(ratePercent: number): Promise<{ ok: false; msg: string } | { ok: true; refunded: number; fulfilled: number }> {
+    return this.compute.current.refundSimulation(ratePercent);
+  }
+
+  /**
+   * 仿真：prepare 在主线程解析（auto 线路创建为轻量 CRUD），
+   * 批量生成与批量购票经网关发起。
+   */
+  async runSimulation(cfg: SimulationConfig): Promise<SimulationResult> {
+    const prepared = this.simulation.prepare(cfg);
+    if (!prepared.ok) return prepared;
+    return this.compute.current.simulateResolved(prepared.line, prepared.cfg);
   }
 
   /* ---------- ViewModel ---------- */

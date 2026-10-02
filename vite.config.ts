@@ -16,5 +16,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     target: 'es2020'
+  },
+  worker: {
+    // 计算引擎 Worker 内联为 blob（IIFE 格式），保证 file:// 直开与单文件产物自包含
+    format: 'iife'
   }
 });
