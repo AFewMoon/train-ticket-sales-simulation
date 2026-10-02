@@ -245,4 +245,61 @@ describe('补丁合并（applyPatchToStore）', () => {
     const updated = c.ticketing.currentOrders().find((o) => o.id === (r.ok && r.issued ? r.order.id : ''));
     expect(updated?.status).toBe(OrderStatus.CANCELLED);
   });
+
+  it('removedOrderIds：按 id 删除订单（对账清除悬空单的表达）', () => {
+    const c = makeContainer();
+    const rig = setupRig(c, ['甲站', '乙站'], { seatCount: 2 });
+    const r = c.ticketing.purchase(rig.trainCode, 0, 1);
+    if (!(r.ok && r.issued)) throw new Error('应出票');
+    const orderId = r.order.id;
+
+    c.ticketing.applyPatch({
+      orders: [],
+      removedOrderIds: [orderId],
+      queueStrategy: 'replace-codes',
+      queues: {},
+      events: []
+    });
+
+    expect(c.ticketing.currentOrders().some((o) => o.id === orderId)).toBe(false);
+  });
+});
+
+describe('悬空订单对账自愈（未知车次根治）', () => {
+  it('对账清除引用不存在车次的订单（含 CANCELLED 与候补），正常订单保留、无主队列废弃', () => {
+    const c = makeContainer();
+    const rig = setupRig(c, ['甲站', '乙站'], { seatCount: 2 });
+    const r = c.ticketing.purchase(rig.trainCode, 0, 1);
+    if (!(r.ok && r.issued)) throw new Error('应出票');
+
+    // 注入引用不存在车次 G9999 的悬空订单（已出票 + 候补各一）及其队列条目
+    c.ticketing.applyPatch({
+      orders: [
+        { id: 'dangling-1', trainCode: 'G9999', fromIdx: 0, toIdx: 1, status: OrderStatus.ISSUED, createdAt: 1, seatNo: 0 },
+        { id: 'dangling-2', trainCode: 'G9999', fromIdx: 0, toIdx: 1, status: OrderStatus.WAITING, createdAt: 2 }
+      ],
+      queueStrategy: 'replace-codes',
+      queues: { G9999: [{ id: 'dangling-2', fromIdx: 0, toIdx: 1, createdAt: 2 }] },
+      events: []
+    });
+    expect(c.ticketing.currentOrders().some((o) => o.id === 'dangling-1')).toBe(true);
+
+    const res = c.ticketing.reconcile();
+    expect(res.fulfilled).toBe(0);
+
+    // 悬空订单与其无主队列被清除
+    expect(c.ticketing.currentOrders().some((o) => o.id === 'dangling-1')).toBe(false);
+    expect(c.ticketing.currentOrders().some((o) => o.id === 'dangling-2')).toBe(false);
+    expect(c.ticketing.currentQueues().trains['G9999']).toBeUndefined();
+    // 正常订单保留
+    expect(c.ticketing.currentOrders().some((o) => o.id === r.order.id)).toBe(true);
+  });
+
+  it('手动购票订单继承 sim 标记（在仿真车次上购票的场景）', () => {
+    const c = makeContainer();
+    const manual = setupRig(c, ['甲站', '乙站'], { seatCount: 2 });
+    const r = c.ticketing.purchase(manual.trainCode, 0, 1);
+    if (!(r.ok && r.issued)) throw new Error('应出票');
+    expect(r.order.sim).toBeUndefined(); // 非仿真车次：不带 sim 标记
+  });
 });

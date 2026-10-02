@@ -210,6 +210,7 @@ localStorage→IndexedDB 升级面对的根本矛盾是 IndexedDB 天然异步�
 19. 存储架构（v3.2）：`__ttsStorage === 'idb'`（IndexedDB 镜像生效）；数据写入后刷新页面可恢复（IndexedDB 持久化）；localStorage 旧 `tts:*` 数据启动时一次性迁移进 IndexedDB 并清除旧键（镜像非空时跳过，幂等）；防抖窗口内同键多次写合并为一次落盘、落盘失败回滚重试；IndexedDB 不可用回退 localStorage/内存。（idb-mirror.spec + 浏览器冒烟）
 20. 版本标记（v3.2）：`__ttsVersion` 与 package.json 版本一致且为语义化版本；页脚展示 `v<版本号>`；`tts:appVersion` 记录最后写入数据的应用版本（仅变更时写入）；CI 断言 dist 产物内嵌正确版本号。（version.spec + deploy.yml）
 21. 仿真链接复现：仿真 8 项参数编码进 URL hash（`#sim=line=<线路名|__auto__>&auto&gd&ge&gs&seats&req&seed`）——线路按**名称**编码（id 由 uid() 生成跨机器不稳定）；「复制复现链接」按钮一键复制；运行成功后 hash 自动更新为实际种子（-1 随机种子运行后写入 usedSeed）；打开带参链接自动回填表单但不自动运行；线路不存在时保留当前选择并 toast 提示（降级不静默）；seed 非整数/越界整段拒绝；复现口径为统计结果与订单分布（车次号 Math.random 生成、不参与复现）。（sim-link.spec + 浏览器冒烟）
+22. 悬空订单根治（未知车次/未知站）：手动购票订单继承目标车次 sim 标记（`applyPurchase` 收口，教训 #8）；「清理仿真数据」以 sim 车次 code 集合为锚——连带回收关联订单（含存量无标记单与 CANCELLED 历史单）、候补队列条目与事件时间线记录；启动对账清除引用不存在车次的悬空订单（`EnginePatch.removedOrderIds` 表达删除，先删后归并，且先于 waitingByTrain 构建使无主队列自然废弃）；存量脏数据刷新页面即被自愈，无需迁移脚本。（simulation.spec + engine.spec + 浏览器注入验证）
 
 ## 运行
 

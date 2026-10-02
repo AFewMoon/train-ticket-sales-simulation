@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { makeContainer, setupRig } from './helpers';
 import { AUTO_LINE_ID, typeOfTrain } from '../src/application/simulation-service';
 import { SimType } from '../src/domain/model/train';
+import { OrderStatus } from '../src/domain/model/order';
 import { isMajorStation } from '../src/domain/model/line';
 
 /** 8 站线路，大站位于下标 0/2/5/7（满足直达≥2 大站、快车≥3 大站） */
@@ -164,5 +165,57 @@ describe('清理仿真数据（sim 标记回收）', () => {
 
     // 幂等：再清一次无副作用
     expect(c.simulation.cleanupSimulation().stations).toBe(0);
+  });
+
+  it('sim 车次上的手动订单继承 sim 标记；存量无标记订单、关联队列与事件一并回收（教训 #8 双保险）', () => {
+    const c = makeContainer();
+    const manual = setupRig(c, ['手动甲', '手动乙'], { seatCount: 3 });
+    expect(c.ticketing.purchase(manual.trainCode, 0, 1).ok).toBe(true);
+
+    const res = c.simulation.runSimulation({ ...BASE_CFG, lineId: AUTO_LINE_ID, autoStationCount: 6 });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const simCodes = res.summary.trains.map((t) => t.code);
+    const simCode = simCodes[0] as string;
+
+    // sim 车次上手动购票 → 订单继承 sim 标记（创建路径收口统一补标记）
+    const onSim = c.ticketing.purchase(simCode, 0, 1);
+    expect(onSim.ok).toBe(true);
+    if (onSim.ok && onSim.issued) expect(onSim.order.sim).toBe(true);
+
+    // 模拟旧版本存量脏数据：sim 车次上无标记的订单（标记收口之前创建）
+    const legacyDto = {
+      id: 'legacy-o',
+      trainCode: simCode,
+      fromIdx: 1,
+      toIdx: 2,
+      status: OrderStatus.ISSUED,
+      createdAt: 1,
+      seatNo: 9
+    };
+    c.ticketing.applyPatch({
+      orders: [legacyDto],
+      queueStrategy: 'replace-codes',
+      queues: {},
+      events: []
+    });
+    expect(c.ticketing.ordersOfTrain(simCode).some((o) => o.id === 'legacy-o')).toBe(true);
+    expect(c.ticketing.listEvents(50).some((ev) => ev.trainCode === simCode)).toBe(true);
+
+    const out = c.simulation.cleanupSimulation();
+    expect(out.orders).toBeGreaterThan(0);
+    expect(out.events).toBeGreaterThan(0);
+
+    // sim 车次的订单（含存量无标记）、队列条目、事件全部回收
+    simCodes.forEach((code) => {
+      expect(c.ticketing.ordersOfTrain(code).length).toBe(0);
+      expect(c.ticketing.currentQueues().trains[code]).toBeUndefined();
+    });
+    expect(
+      c.ticketing.listEvents(50).some((ev) => simCodes.indexOf(ev.trainCode) !== -1)
+    ).toBe(false);
+
+    // 手动数据完好
+    expect(c.ticketing.ordersOfTrain(manual.trainCode).length).toBe(1);
   });
 });

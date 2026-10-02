@@ -59,6 +59,8 @@ export function createContainer(storage: StorageLike = createBrowserStorage()): 
     trainRepo,
     lineRepo,
     orderRepo,
+    queueRepo,
+    eventRepo,
     stations,
     lines,
     trains,

@@ -214,7 +214,9 @@ export function applyPurchase(
     fromIdx,
     toIdx,
     status: OrderStatus.WAITING,
-    createdAt: now + (orders.length % 1000) * 0.001 // 同毫秒排序稳定（教训 #6）
+    createdAt: now + (orders.length % 1000) * 0.001, // 同毫秒排序稳定（教训 #6）
+    // 标记收口（教训 #8）：订单继承目标车次的 sim 标记，清理仿真时才不漏删
+    sim: train.sim === true
   });
   orders.push(newOrder);
 
@@ -371,6 +373,19 @@ export function applyReconcile(
 ): TicketingOutcome<{ fulfilled: number }> {
   const orders = scope.orders.map(Order.fromDto);
   const trainByCode = new Map(scope.trains.map((t) => [t.code, t]));
+
+  // 悬空订单清除：引用车次已不存在的订单（含 CANCELLED 历史单）无法渲染与统计，
+  // 原样 upsert 会永久保留「未知车次/未知站」占位数据——回收之（removedOrderIds 交落盘层删除）。
+  // 必须先于 waitingByTrain 构建：悬空候补单移除后，其无主队列才会被下方判定自然废弃。
+  const removedOrderIds: string[] = [];
+  for (let i = orders.length - 1; i >= 0; i--) {
+    const o = orders[i] as Order;
+    if (!trainByCode.has(o.trainCode)) {
+      removedOrderIds.push(o.id);
+      orders.splice(i, 1);
+    }
+  }
+
   const queues: Record<string, QueueEntry[]> = {};
   Object.entries(scope.queues).forEach(([code, entries]) => {
     if (Array.isArray(entries)) queues[code] = entries.map((e) => ({ ...e }));
@@ -441,6 +456,12 @@ export function applyReconcile(
 
   return {
     result: { fulfilled },
-    patch: { orders: orders.map((o) => o.toDto()), queueStrategy: 'replace-all', queues, events }
+    patch: {
+      orders: orders.map((o) => o.toDto()),
+      removedOrderIds,
+      queueStrategy: 'replace-all',
+      queues,
+      events
+    }
   };
 }

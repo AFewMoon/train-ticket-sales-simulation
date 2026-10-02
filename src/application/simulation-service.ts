@@ -11,6 +11,8 @@ import type { Station } from '../domain/model/station';
 import type { Line } from '../domain/model/line';
 import type { Train } from '../domain/model/train';
 import type { Order } from '../domain/model/order';
+import type { DomainEvent } from '../domain/model/event';
+import type { QueueFile } from '../infrastructure/persistence-shapes';
 import type { NumberingService } from '../domain/services/numbering-service';
 import type { StationService } from '../domain/services/station-service';
 import type { LineService } from '../domain/services/line-service';
@@ -59,6 +61,8 @@ export class SimulationService {
     private readonly trainRepo: IRepository<Train[]>,
     private readonly lineRepo: IRepository<Line[]>,
     private readonly orderRepo: IRepository<Order[]>,
+    private readonly queueRepo: IRepository<QueueFile>,
+    private readonly eventRepo: IRepository<DomainEvent[]>,
     private readonly stations: StationService,
     private readonly lines: LineService,
     _trains: TrainService,
@@ -147,22 +151,45 @@ export class SimulationService {
     return this.runSimulationResolved(prepared.line, prepared.cfg);
   }
 
-  /* ---------- 清理：按 sim 标记精准回收 ---------- */
+  /* ---------- 清理：以 sim 车次集合为锚精准回收 ---------- */
 
-  cleanupSimulation(): { stations: number } {
-    // 1) 删 sim 订单（含已取消的历史订单）
-    this.orderRepo.write(this.orderRepo.read().filter((o) => !o.sim));
+  cleanupSimulation(): { stations: number; orders: number; events: number } {
+    // sim 车次 code 集合：清理范围的锚。订单删除条件 = sim 标记 或 车次属于集合
+    // ——双保险（教训 #8：存量无标记订单——sim 标记收口前经购票路径创建——也能被回收）
+    const simCodes = new Set(this.trainRepo.read().filter((t) => t.sim).map((t) => t.code));
+
+    // 1) 删 sim 关联订单（含 CANCELLED 历史单），避免悬空「未知车次」占位
+    const orders = this.orderRepo.read();
+    const keptOrders = orders.filter((o) => !o.sim && !simCodes.has(o.trainCode));
+    const removedOrders = orders.length - keptOrders.length;
+    this.orderRepo.write(keptOrders);
+
     // 2) 删 sim 车次（此时已无订单引用）
     this.trainRepo.write(this.trainRepo.read().filter((t) => !t.sim));
-    // 3) 删 sim 线路（此时已无车次挂接）与 sim 车站（站序无引用）
+
+    // 3) 删 sim 车次的候补队列条目（整段移除，不等下次启动对账）
+    if (simCodes.size) {
+      const qf = this.queueRepo.read();
+      simCodes.forEach((code) => delete qf.trains[code]);
+      this.queueRepo.write(qf);
+    }
+
+    // 4) 事件时间线：剔除 trainCode 属于 sim 车次的记录（已删车次的购票/出票事件不再显示）
+    const events = this.eventRepo.read();
+    const keptEvents = events.filter((ev) => !simCodes.has(ev.trainCode));
+    const removedEvents = events.length - keptEvents.length;
+    this.eventRepo.write(keptEvents);
+
+    // 5) 删 sim 线路（此时已无车次挂接）与 sim 车站（站序无引用）
     this.lineRepo.write(this.lineRepo.read().filter((l) => !l.sim));
     const removedNos = new Set<string>();
     this.stations.list().forEach((st) => {
       if (st.sim) removedNos.add(st.no);
     });
     this.stationRepo.write(this.stations.list().filter((st) => !st.sim));
+
     // 号码池回收重建
     this.numbering.rebuildSeqPools();
-    return { stations: removedNos.size };
+    return { stations: removedNos.size, orders: removedOrders, events: removedEvents };
   }
 }

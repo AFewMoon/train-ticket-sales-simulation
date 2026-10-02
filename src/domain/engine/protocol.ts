@@ -76,6 +76,8 @@ export type QueuePatchStrategy = 'replace-codes' | 'replace-all' | 'merge-append
 export interface EnginePatch {
   /** 订单按 id upsert（不删除——CANCELLED 语义下订单只增改） */
   orders: OrderDto[];
+  /** 对账清除的悬空订单 id（订单引用的车次已不存在；upsert 语义无法表达删除，协议最小扩展） */
+  removedOrderIds?: string[];
   queueStrategy: QueuePatchStrategy;
   queues: Record<string, QueueEntry[]>;
   /** 新增领域事件（主线程追加并维持 500 上限） */
@@ -97,10 +99,15 @@ export interface PatchStore {
   saveEvents(events: DomainEvent[]): void;
 }
 
-/** 补丁统一落盘：订单按 id 归并、队列按策略合并、事件追加并维持上限 */
+/** 补丁统一落盘：订单先删（removedOrderIds）后按 id 归并、队列按策略合并、事件追加并维持上限 */
 export function applyPatchToStore(store: PatchStore, patch: EnginePatch, eventsCap: number): void {
-  if (patch.orders.length) {
-    const orders = store.getOrders();
+  if (patch.orders.length || (patch.removedOrderIds && patch.removedOrderIds.length)) {
+    let orders = store.getOrders();
+    // 悬空订单删除（对账自愈）：先删后归并，被删 id 若同时出现在 upsert 列表则以 upsert 为准
+    if (patch.removedOrderIds && patch.removedOrderIds.length) {
+      const removed = new Set(patch.removedOrderIds);
+      orders = orders.filter((o) => !removed.has(o.id));
+    }
     const patchById = new Map(patch.orders.map((dto) => [dto.id, dto]));
     for (let i = 0; i < orders.length; i++) {
       const dto = patchById.get(orders[i]?.id ?? '');
