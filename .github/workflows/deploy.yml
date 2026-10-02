@@ -45,6 +45,7 @@ jobs:
         run: |
           mkdir -p site
           cp index.html site/
+          cp favicon.svg site/
           cp -r css site/css
           cp -r dist site/dist
 
